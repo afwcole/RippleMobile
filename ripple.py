@@ -93,3 +93,7 @@ def get_account_info(phone:str):
         ))
         acct_info = response.result['account_data']
         return f"address: {acct_info.get('Account')} \n  balance: {acct_info.get('Balance')} \n sequence: {acct_info.get('Sequence')} \n index: {acct_info.get('index')}"
+
+def get_transaction_history(phone:str):
+    # send response as sms
+    pass
