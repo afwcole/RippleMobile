@@ -1,13 +1,16 @@
-import xrpl
+import xrpl, os
 from xrpl import wallet, utils, transaction
 from xrpl.clients import JsonRpcClient
 from xrpl.models.requests import AccountInfo, AccountTx
 from xrpl.models.transactions import Payment
 from schemas import RegistrationRequest, TransactionRequest
 from utils import format_transactions, get_account_by_phone, save_to_json, load_data_from_json
+from dotenv import load_dotenv
 from sms import send_sms
 
-JSON_RPC_URL = "https://s.altnet.rippletest.net:51234/"
+load_dotenv()
+
+JSON_RPC_URL = os.environ.get('JSON_RPC_URL')
 CLIENT = JsonRpcClient(JSON_RPC_URL)
 
 def register_account(registration_request: RegistrationRequest):
@@ -39,7 +42,7 @@ def check_balance(phone_num: str, pin: str):
         response = CLIENT.request(acct_info)
         send_sms(f"Current balance is {int(response.result['account_data']['Balance']) / 1_000_000} XRP", phone_num)
         return f"You have {int(response.result['account_data']['Balance']) / 1_000_000} XRP"
-    except xrpl.clients.exceptions.XrpClientException as e:
+    except Exception as e:
         print(e)
         return "Something went wrong, try again later"
 
@@ -90,7 +93,7 @@ def get_account_info(phone:str, pin: str):
             return f"Address: {acct_info.get('Account')} \nBalance: {int(acct_info.get('Balance')) / 1_000_000} XRP \nSequence: {acct_info.get('Sequence')} \nIndex: {acct_info.get('index')}"
         else:
             return "No account found."
-    except xrpl.clients.exceptions.XrpClientException as e:
+    except Exception as e:
         print(e)
         return "Something went wrong, try again later"
     
@@ -110,6 +113,6 @@ def get_transaction_history(phone: str, pin: str) -> str:
         formatted_txn_msg = format_transactions(transactions)
         send_sms(f"Transaction History Summary: \n{formatted_txn_msg}", phone)
         return f"Transaction history has been sent to {phone} via SMS"
-    except xrpl.clients.exceptions.XrpClientException as e:
+    except Exception as e:
         print(e)
         return "Something went wrong, try again later"

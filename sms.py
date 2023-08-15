@@ -1,9 +1,12 @@
-import requests
+import requests, os
 from schemas import NaloSMSRequest
+from dotenv import load_dotenv
 
-URL="https://sms.nalosolutions.com/smsbackend/Nal_resl/send-message/"
-AUTH_KEY="2v2ne(o!ot(ret_0tkz6rz1#z13x5@@uf7vc(lz5p!0qilxq6he37nu@_lu5h7qw"
-SENDER_ID="RippleMO"
+load_dotenv()
+
+URL=os.environ.get('SMS_URL')
+AUTH_KEY=os.environ.get('SMS_AUTH_KEY')
+SENDER_ID=os.environ.get('SMS_SENDER_ID')
 
 def send_sms(message, recipient_phone_num):
     payload = NaloSMSRequest(

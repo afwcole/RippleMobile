@@ -2,7 +2,7 @@ from schemas import USSDResponse, IncomingUSSDRequest, RegistrationRequest, Tran
 from ripple import get_account_info, get_transaction_history, register_account, check_balance, send_xrp
 from utils import get_account_by_phone
 from collections import defaultdict
-import re
+import re, threading
 
 response = ''
 PIN_PATTERN = r'^\d{4}$'
@@ -48,7 +48,8 @@ def ussd_callback(payload:IncomingUSSDRequest):
             elif prev_choice == "3":
                 response = get_account_info(payload.MSISDN, payload.USERDATA)
             elif prev_choice == "4":
-                response = get_transaction_history(payload.MSISDN, payload.USERDATA)
+                threading.Thread(target=get_transaction_history, args=(payload.MSISDN, payload.USERDATA)).start()
+                response = "We're preparing your history, we'll send an sms once it's ready"
             payload.MSGTYPE = False
             del sessions[payload.SESSIONID]
 
@@ -67,14 +68,25 @@ def ussd_callback(payload:IncomingUSSDRequest):
 
         # validate pin and send amount
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==3:
-            response = send_xrp(
-                TransactionRequest(
+            
+            sender = get_account_by_phone(payload.MSISDN)
+            recipient = get_account_by_phone(sessions[payload.SESSIONID]['receipent_number'])
+
+            if not sender:
+                response = "sender account not have"
+
+            elif not recipient:
+                response = "recipient account not found"
+
+            else:
+                data = TransactionRequest(
                     sender_phone_num=payload.MSISDN, 
                     recipient_phone_num=sessions[payload.SESSIONID]['receipent_number'], 
                     amount_xrp=sessions[payload.SESSIONID]['amount'], 
                     pin=payload.USERDATA, 
                 )
-            )
+                response = f"You have requested to send {sessions[payload.SESSIONID]['amount']} XRP to {sessions[payload.SESSIONID]['receipent_number']}, we are processing your transaction request, you'll receive an sms when completed"
+                threading.Thread(target=send_xrp, args=(data,)).start()
             payload.MSGTYPE = False
             del sessions[payload.SESSIONID]
         
@@ -89,13 +101,16 @@ def ussd_callback(payload:IncomingUSSDRequest):
 
     # create ripple account
     elif re.match(PIN_PATTERN, payload.USERDATA):
-        response = register_account(
-            RegistrationRequest(   
+        if get_account_by_phone(payload.MSISDN):
+            response = "You already have an account with us"
+        else:
+            response = "We are creating your account, you'll receive an sms when it is completed"
+            data = RegistrationRequest(   
                 phone_num=payload.MSISDN,
                 name=payload.MSISDN,
                 pin=payload.USERDATA
             )
-        )
+            threading.Thread(target=register_account, args=(data,)).start()
         payload.MSGTYPE = False
 
     # exit
