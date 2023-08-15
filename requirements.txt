@@ -21,3 +21,6 @@ typing_extensions==4.7.1
 websockets==10.4
 wrapt==1.15.0
 xrpl-py==2.2.0
+charset-normalizer==3.2.0 
+requests==2.31.0
+urllib3==2.0.4

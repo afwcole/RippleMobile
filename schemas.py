@@ -25,3 +25,9 @@ class USSDResponse(BaseModel):
     USERDATA: str
     MSG: str
     MSGTYPE: bool
+
+class NaloSMSRequest(BaseModel):
+    key: str
+    msisdn: str
+    message: str
+    sender_id: str
