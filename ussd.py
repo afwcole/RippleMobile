@@ -1,9 +1,8 @@
 from schemas import USSDResponse, IncomingUSSDRequest, RegistrationRequest, TransactionRequest
-from ripple import register_account, check_balance, send_xrp
+from ripple import get_account_info, get_transaction_history, register_account, check_balance, send_xrp
 from utils import get_account_by_phone
 from collections import defaultdict
-from fastapi import BackgroundTasks
-import re, threading
+import re
 
 response = ''
 PIN_PATTERN = r'^\d{4}$'
@@ -19,7 +18,9 @@ def ussd_callback(payload:IncomingUSSDRequest):
         if get_account_by_phone(payload.MSISDN):
             response += "1. Check Wallet Balance \n"
             response += "2. Send XRP \n"
-            response += "3. Exit"
+            response += "3. Get Account Info \n"
+            response += "4. Get Transaction History \n"
+            response += "5. Exit"
         else:
             response += "1. Register New Wallet \n"
             response += "2. Exit"
@@ -27,7 +28,8 @@ def ussd_callback(payload:IncomingUSSDRequest):
     # if user has an account
     elif get_account_by_phone(payload.MSISDN):
         # start page
-        if payload.USERDATA == '1':
+        if payload.USERDATA == '1' or payload.USERDATA == '3' or payload.USERDATA == '4':
+            sessions[payload.SESSIONID]['prev_choice'] = payload.USERDATA
             response = "Enter your 4 digit wallet pin"
             payload.MSGTYPE = True
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
@@ -40,18 +42,19 @@ def ussd_callback(payload:IncomingUSSDRequest):
 
         # validate pin and return balance
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1:
-            response = check_balance(payload.MSISDN, payload.USERDATA)
+            prev_choice = sessions[payload.SESSIONID]['prev_choice']
+            if prev_choice == "1":
+                response = check_balance(payload.MSISDN, payload.USERDATA)
+            elif prev_choice == "3":
+                response = get_account_info(payload.MSISDN, payload.USERDATA)
+            elif prev_choice == "4":
+                response = get_transaction_history(payload.MSISDN, payload.USERDATA)
             payload.MSGTYPE = False
             del sessions[payload.SESSIONID]
 
         # validate phone number
         elif re.match(PHONE_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1:
-            # sessions[payload.SESSIONID]['receipent_number'] = 
             response, payload.MSGTYPE = ("Enter amount", True) if get_account_by_phone(payload.USERDATA) else ("the receipient is not registered", False)
-            if payload.USERDATA.startswith("0") and payload.MSISDN.startswith("233"):
-                payload.USERDATA = payload.MSISDN[:3]+payload.USERDATA[1:]
-            if payload.MSISDN == payload.USERDATA:
-                response, payload.MSGTYPE = ("you cannot send funds to yourself", True)
             sessions[payload.SESSIONID]['receipent_number'] = payload.USERDATA
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
 
@@ -64,28 +67,19 @@ def ussd_callback(payload:IncomingUSSDRequest):
 
         # validate pin and send amount
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==3:
-            sender = get_account_by_phone(payload.MSISDN)
-            recipient = get_account_by_phone(sessions[payload.SESSIONID]['receipent_number'])
-            if not sender:
-                response = "sender account not found"
-            elif not recipient:
-                response = "recipient account not found"
-            elif sender['pin'] != payload.USERDATA:
-                response = "incorrect pin"
-            else:            
-                data = TransactionRequest(
+            response = send_xrp(
+                TransactionRequest(
                     sender_phone_num=payload.MSISDN, 
                     recipient_phone_num=sessions[payload.SESSIONID]['receipent_number'], 
-                    amount_xrp=float(sessions[payload.SESSIONID]['amount']), 
+                    amount_xrp=sessions[payload.SESSIONID]['amount'], 
                     pin=payload.USERDATA, 
                 )
-                threading.Thread(target=send_xrp, args=(data,)).start()
-                response = "processing transaction, you will receive an sms once we're done"
+            )
             payload.MSGTYPE = False
             del sessions[payload.SESSIONID]
         
         # exit
-        if payload.USERDATA == '3':
+        if payload.USERDATA == '5':
             response = "Thank you for using our service, come back soon :)"
             payload.MSGTYPE = False
 
@@ -94,13 +88,14 @@ def ussd_callback(payload:IncomingUSSDRequest):
         payload.MSGTYPE = True
 
     # create ripple account
-    elif re.match(PIN_PATTERN, payload.USERDATA):     
-        if get_account_by_phone(payload.MSISDN): 
-            response = "user already exists"
-        else:
-            data = RegistrationRequest(phone_num=payload.MSISDN, name=payload.MSISDN, pin=payload.USERDATA)
-            threading.Thread(target=register_account, args=(data,)).start()
-            response = "account is being created, you will receive an sms when account has been created"
+    elif re.match(PIN_PATTERN, payload.USERDATA):
+        response = register_account(
+            RegistrationRequest(   
+                phone_num=payload.MSISDN,
+                name=payload.MSISDN,
+                pin=payload.USERDATA
+            )
+        )
         payload.MSGTYPE = False
 
     # exit

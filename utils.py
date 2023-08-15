@@ -1,4 +1,6 @@
+from datetime import datetime
 import json, hashlib
+from pydoc import text
 from typing import Union, List
 
 def get_account_by_phone(phone_num: str) -> Union[dict, None]:
@@ -18,3 +20,21 @@ def save_to_json(data: List[dict], filename="data.json"):
 
 def encode(data:str):
     return hashlib.sha256(text.encode()).hexdigest()
+
+def format_unix_date(unix_timestamp: int):
+    dt_object = datetime.utcfromtimestamp(unix_timestamp)
+    formatted_date = dt_object.strftime('%Y-%m-%d %H:%M:%S UTC')
+    return formatted_date
+
+def format_transactions(transactions: list):
+    formatted_txs = []
+    for tx in transactions:
+        tx_type = tx['tx']['TransactionType']
+        amount = int(tx['tx']['Amount']) / 1_000_000
+        destination = tx['tx']['Destination']
+        fee = int(tx['tx']['Fee'])
+        date = format_unix_date(tx['tx']['date'])
+        formatted_tx = f"Type: {tx_type} \n Amount: {amount} XRP \n Recipient: {destination} \n Fee: {fee} XRP drops \n Date: {date}"
+        formatted_txs.append(formatted_tx)
+
+    return "\n\n".join(formatted_txs)
