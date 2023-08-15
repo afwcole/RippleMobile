@@ -1,72 +1,69 @@
-import json
 import xrpl
-from typing import Union, List
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 from xrpl import wallet, utils, transaction
 from xrpl.clients import JsonRpcClient
 from xrpl.models.requests import AccountInfo
 from xrpl.models.transactions import Payment
-
-app = FastAPI()
+from schemas import RegistrationRequest, TransactionRequest
+from utils import get_account_by_phone, save_to_json, load_data_from_json
+from fastapi import HTTPException
 
 JSON_RPC_URL = "https://s.altnet.rippletest.net:51234/"
 CLIENT = JsonRpcClient(JSON_RPC_URL)
 
-class RegistrationRequest(BaseModel):
-    phone_num: str
-    name: str
-    pin: str
-
-class TransactionRequest(BaseModel):
-    sender_phone_num: str
-    recipient_phone_num: str
-    amount_xrp: float
-    pin: str
-
-@app.post("/account/register")
 def register_account(registration_request: RegistrationRequest):
+    print(0)
     registration_dict = registration_request.dict()
     if get_account_by_phone(registration_dict['phone_num']):
-        raise HTTPException(status_code=400, detail="A record with this phone number already exists.")
+        return "user already exists"
+    
+    print(1)
     
     try:
         new_wallet = wallet.generate_faucet_wallet(CLIENT)
         registration_dict['wallet_address'] = new_wallet.classic_address
         registration_dict['wallet_seed'] = new_wallet.seed
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate wallet: {str(e)}")
+        print(e)
+        return "something went wrong, try again later"
+
+    print(3)
     
     existing_accounts = load_data_from_json()
+    print(4)
     existing_accounts.append(registration_dict)
+    print(5)
     save_to_json(existing_accounts)
-    
-    return {"status": "success"}
+    print(6)
 
-@app.get("/account/balance/{phone_num}/{pin}")
+    
+    return "account created"
+
 def check_balance(phone_num: str, pin: str):
     user_account = get_account_by_phone(phone_num)
     if not user_account:
-        raise HTTPException(status_code=404, detail="User not found.")
+        return "User not found."
+
     if user_account['pin'] != pin:
-        raise HTTPException(status_code=401, detail="Incorrect PIN.")
+        return "Incorrect PIN."
     
     try:
         acct_info = AccountInfo(account=user_account['wallet_address'], ledger_index="validated")
         response = CLIENT.request(acct_info)
-        return {"balance": int(response.result['account_data']['Balance']) / 1_000_000}
+        return f"you have {int(response.result['account_data']['Balance']) / 1_000_000} XRP"
     except xrpl.clients.exceptions.XrpClientException as e:
-        raise HTTPException(status_code=500, detail="Failed to communicate with the XRPL.")
+        print(e)
+        return "something went wrong, try again later"
 
-@app.post("/transact/")
 def send_xrp(transaction_request: TransactionRequest):
     sender = get_account_by_phone(transaction_request.sender_phone_num)
     recipient = get_account_by_phone(transaction_request.recipient_phone_num)
     
-    if not sender or not recipient:
-        raise HTTPException(status_code=404, detail="One of the users does not exist.")
+    if not sender:
+        return "user not found"
+    if not recipient:
+        return "recipient does not have an account"
     if sender['pin'] != transaction_request.pin:
-        raise HTTPException(status_code=401, detail="Incorrect PIN.")
+        return "incorrect pin"
 
     sending_wallet = wallet.Wallet.from_seed(sender['wallet_seed'])
     payment = Payment(
@@ -82,21 +79,17 @@ def send_xrp(transaction_request: TransactionRequest):
         acct_info = AccountInfo(account=sending_wallet.classic_address, ledger_index="validated")
         response = CLIENT.request(acct_info)
         updated_balance = int(response.result['account_data']['Balance']) / 1_000_000
-        return {"status": "success", "updated_balance": updated_balance}
+        return f"transaction successful, your new balance is {updated_balance}"
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return "something went wrong, try again later"
 
-def get_account_by_phone(phone_num: str) -> Union[dict, None]:
-    accounts = load_data_from_json()
-    return next((acc for acc in accounts if acc['phone_num'] == phone_num), None)
-
-def load_data_from_json(filename="data.json") -> List[dict]:
-    try:
-        with open(filename, "r") as file:
-            return json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-def save_to_json(data: List[dict], filename="data.json"):
-    with open(filename, "w") as file:
-        json.dump(data, file)
+def get_account_info(phone:str):
+    account = get_account_by_phone(phone)
+    if account:
+        response = client.request(AccountInfo(
+            account=account["wallet_address"],
+            ledger_index="validated",
+            strict=True,
+        ))
+        acct_info = response.result['account_data']
+        return f"address: {acct_info.get('Account')} \n  balance: {acct_info.get('Balance')} \n sequence: {acct_info.get('Sequence')} \n index: {acct_info.get('index')}"
