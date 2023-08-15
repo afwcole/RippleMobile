@@ -37,6 +37,7 @@ def check_balance(phone_num: str, pin: str):
     try:
         acct_info = AccountInfo(account=user_account['wallet_address'], ledger_index="validated")
         response = CLIENT.request(acct_info)
+        send_sms(f"Current balance is {int(response.result['account_data']['Balance']) / 1_000_000} XRP", phone_num)
         return f"You have {int(response.result['account_data']['Balance']) / 1_000_000} XRP"
     except xrpl.clients.exceptions.XrpClientException as e:
         print(e)
@@ -63,8 +64,8 @@ def send_xrp(transaction_request: TransactionRequest):
         recipient_response = CLIENT.request(recipient_acct_info)
         sender_updated_balance = int(sender_response.result['account_data']['Balance']) / 1_000_000
         recipient_updated_balance = int(recipient_response.result['account_data']['Balance']) / 1_000_000
-        send_sms(f"Transaction successful, you sent {transaction_request.amount_xrp} XRP to {transaction_request.recipient_phone_num}, your new balance is {sender_updated_balance} XRP", transaction_request.sender_phone_num)
-        send_sms(f"You have received {transaction_request.amount_xrp} XRP from {transaction_request.sender_phone_num}, your new balance is {recipient_updated_balance} XRP", transaction_request.recipient_phone_num)
+        send_sms(f"Transaction successful, you sent {transaction_request.amount_xrp} XRP to {transaction_request.recipient_phone_num}, your Current Balance is {sender_updated_balance} XRP", transaction_request.sender_phone_num)
+        send_sms(f"You have received {transaction_request.amount_xrp} XRP from {transaction_request.sender_phone_num}, your Current Balance is {recipient_updated_balance} XRP", transaction_request.recipient_phone_num)
         return True
     except Exception as e:
         print(e)
