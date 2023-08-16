@@ -20,5 +20,7 @@ def send_sms(message, recipient_phone_num):
 
     if response.status_code == 200:
         result = response.json()
+        # log here
+        print("sms request sent")
     else:
         print(f"Request failed with status code: {response.status_code}")
