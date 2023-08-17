@@ -9,7 +9,7 @@ load_dotenv()
 
 sys.path.extend([".",".."])
 
-app = FastAPI()
+app = FastAPI(docs_url="/")
 
 @app.post("/incoming-ussd-request/")
 def ussd_request(payload:IncomingUSSDRequest):
