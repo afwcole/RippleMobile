@@ -19,7 +19,7 @@ def save_to_json(data: List[dict], filename="data.json"):
         json.dump(data, file)
 
 def encode(data:str):
-    return hashlib.sha256(text.encode()).hexdigest()
+    return hashlib.sha256(data.encode()).hexdigest()
 
 def format_unix_date(unix_timestamp: int):
     dt_object = datetime.utcfromtimestamp(unix_timestamp)

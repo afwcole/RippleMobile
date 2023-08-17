@@ -4,7 +4,7 @@ from xrpl.clients import JsonRpcClient
 from xrpl.models.requests import AccountInfo, AccountTx
 from xrpl.models.transactions import Payment
 from schemas import RegistrationRequest, TransactionRequest
-from utils import format_transactions, get_account_by_phone, save_to_json, load_data_from_json
+from utils import format_transactions, get_account_by_phone, save_to_json, load_data_from_json, encode
 from dotenv import load_dotenv
 from sms import send_sms
 
@@ -34,7 +34,7 @@ def check_balance(phone_num: str, pin: str):
     if not user_account:
         return "User not found."
 
-    if user_account['pin'] != pin:
+    if user_account['pin'] != encode(pin):
         return "Incorrect PIN."
     
     try:
@@ -79,7 +79,7 @@ def get_account_info(phone:str, pin: str):
     if not user_account:
         return "User not found."
 
-    if user_account['pin'] != pin:
+    if user_account['pin'] != encode(pin):
         return "Incorrect PIN."
     
     try:
@@ -103,7 +103,7 @@ def get_transaction_history(phone: str, pin: str) -> str:
     if not user_account:
         return "User not found."
 
-    if user_account['pin'] != pin:
+    if user_account['pin'] != encode(pin):
         return "Incorrect PIN."
     
     try:
