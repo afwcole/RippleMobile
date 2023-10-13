@@ -13,20 +13,21 @@ load_dotenv()
 JSON_RPC_URL = os.environ.get('JSON_RPC_URL')
 CLIENT = JsonRpcClient(JSON_RPC_URL)
 
-def register_account(registration_request: RegistrationRequest):
+def register_account(registration_request: RegistrationRequest, account_type:str):
     registration_dict = registration_request.model_dump()
         
     try:
         new_wallet = wallet.generate_faucet_wallet(CLIENT)
         registration_dict['wallet_address'] = new_wallet.classic_address
         registration_dict['wallet_seed'] = new_wallet.seed
+        registration_dict['account_type'] = account_type
     except Exception as e:
         return send_sms("Something went wrong, try again later", registration_request.phone_num)
 
     existing_accounts = load_data_from_json()
     existing_accounts.append(registration_dict)
     save_to_json(existing_accounts)
-    send_sms(f"Welcome to Ripple Mobile! \nYou're account was successfully created for phone number, {registration_request.phone_num}. \nDial *920*106# to start using Ripple Mobile.", registration_request.phone_num)
+    send_sms(f"Welcome to Ripple Mobile! \nYour {account_type.lower()} account was successfully created for phone number, {registration_request.phone_num}. \nDial *920*106# to start using Ripple Mobile.", registration_request.phone_num)
     
 
 def check_balance(phone_num: str, pin: str):
