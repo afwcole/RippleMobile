@@ -1,3 +1,4 @@
+import os
 from xrpl import wallet, transaction
 from xrpl.clients import JsonRpcClient
 from xrpl.models.transactions import SignerEntry, SignerListSet, TrustSet
@@ -8,8 +9,8 @@ from storage import Account, MultiSigAccount, Storage
 
 from utils import encode, get_account_by_phone
 
-# JSON_RPC_URL = os.environ.get('JSON_RPC_URL')
-CLIENT = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
+JSON_RPC_URL = os.environ.get('JSON_RPC_URL')
+CLIENT = JsonRpcClient(JSON_RPC_URL)
 
 db = Storage()
 
