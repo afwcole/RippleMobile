@@ -1,5 +1,5 @@
 from schemas import USSDResponse, IncomingUSSDRequest, RegistrationRequest, TransactionRequest
-from ripple import get_account_info, get_transaction_history, register_account, check_balance, send_xrp
+from ripple import get_account_info, get_transaction_history, register_account, check_balance, send_xrp, encode
 from utils import get_account_by_phone
 from collections import defaultdict
 from dotenv import get_key
@@ -10,10 +10,11 @@ response = ''
 PIN_PATTERN = r'^\d{4}$'
 POS_CODE_PATTERN = r'\*920\*106\*\d{3}$'
 PHONE_PATTERN = r'^(233|0)\d{9}$'
+NUMBER_OPTION_PATTERN=r'\b\d{1,2}\b'
 AMOUNT = r'\$?\d+(?:\.\d{1,2})?'
 sessions = defaultdict(lambda: defaultdict(dict))
 cache = cachetools.TTLCache(maxsize=int(get_key('.env','MAX_CACHE_SIZE')), ttl=float(get_key('.env','CACHE_ITEM_TTL'))) 
- 
+
 def ussd_callback(payload:IncomingUSSDRequest):
     global response
 
@@ -37,6 +38,7 @@ def ussd_callback(payload:IncomingUSSDRequest):
         response = "Welcome to Ripple mobile \n"
         account = get_account_by_phone(payload.MSISDN)
         if account:
+            response += "0. My Approvals \n"
             response += "1. Check Wallet Balance \n"
             response += "2. Send XRP \n"
             response += "3. Get Account Info \n"
@@ -54,26 +56,83 @@ def ussd_callback(payload:IncomingUSSDRequest):
     # if user has an account
     elif get_account_by_phone(payload.MSISDN):
         account = get_account_by_phone(payload.MSISDN)
+        
+        if sessions[payload.SESSIONID]['stage']==7 and re.match(NUMBER_OPTION_PATTERN, payload.USERDATA):
+
+            approval = sessions[payload.SESSIONID]['approvals'].get(payload.USERDATA)
+            if not approval:
+                response, payload.MSGTYPE = 'invalid input...', False
+            else:
+                sessions[payload.SESSIONID]['amount']=approval['amount'] 
+                sessions[payload.SESSIONID]['receipent_number']=approval['requester'] 
+                response, payload.MSGTYPE = 'Enter your 4 digit wallet pin', True
+                sessions[payload.SESSIONID]['stage']+=1
+
+        # pin for my approvals
+        elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==8:
+            if encode(payload.USERDATA) != account.get('pin'):
+                response, payload.MSGTYPE = "Incorrect PIN.", False
+            else:
+                approvals = sessions[payload.SESSIONID]['approvals']
+                data = TransactionRequest(
+                    sender_phone_num=payload.MSISDN, 
+                    recipient_phone_num=sessions[payload.SESSIONID]['receipent_number'], 
+                    amount_xrp=sessions[payload.SESSIONID]['amount'], 
+                    pin=payload.USERDATA, 
+                )
+                response = f"You have requested to send {sessions[payload.SESSIONID]['amount']} XRP to {sessions[payload.SESSIONID]['receipent_number']}, we are processing your transaction request, you'll receive an sms when completed"
+                threading.Thread(target=send_xrp, args=(data,)).start()
+            payload.MSGTYPE = False
+
+            # get chache key
+            keys = [k for k,v in cache.items() 
+                        if v['amount']==sessions[payload.SESSIONID]['amount'] 
+                            and v['payee']==payload.MSISDN
+                                and v['requester']==sessions[payload.SESSIONID]['receipent_number']]
+            if keys:
+                cache.pop(keys[0])
+            del sessions[payload.SESSIONID]
+
         # start page
-        if payload.USERDATA == '1' or payload.USERDATA == '3' or payload.USERDATA == '4':
+        elif payload.USERDATA == '0' or payload.USERDATA == '1' or payload.USERDATA == '3' or payload.USERDATA == '4':
             sessions[payload.SESSIONID]['prev_choice'] = payload.USERDATA
             response = "Enter your 4 digit wallet pin"
             payload.MSGTYPE = True
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
 
         # start page
-        if payload.USERDATA == '2':
+        if payload.USERDATA == '2' and sessions[payload.SESSIONID]['stage']==0:
             response = "enter receipient phone number"
             payload.MSGTYPE = True
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
 
         # Request payment thread for 5 for MERCHANT account_type
-        if payload.USERDATA == '5' and account['account_type']=='MERCHANT':
+        if payload.USERDATA == '5' and account['account_type']=='MERCHANT' and sessions[payload.SESSIONID]['stage']==0:
             response = "POS Request Payment\n" 
             response = "enter payment request amount"
             payload.MSGTYPE = True
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
             sessions[payload.SESSIONID]['prev_choice'] = payload.USERDATA
+
+        # validate pin for My Approvals
+        elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1 and sessions[payload.SESSIONID]['prev_choice']=="0":
+
+            if encode(payload.USERDATA) != account.get('pin'):
+                response, payload.MSGTYPE = "Incorrect PIN.", False
+            else:
+                sessions[payload.SESSIONID]['approvals'] = {}
+                response, payload.MSGTYPE,  = "My Approvals\n", True
+                response += 'select any approval to confirm\n'
+                approvals = [v for k,v in cache.items() if cache.get(k,{}).get('payee')==payload.MSISDN]
+                if not approvals:
+                    response += "no pending approvals..."
+                    payload.MSGTYPE = False
+                else:
+                    for idx,d in enumerate(approvals):
+                        sessions[payload.SESSIONID]['approvals'][str(idx+1)] = d
+                        response += f"{idx+1}. {d['amount']} XRP requested by {d['requester']}\n"
+
+                sessions[payload.SESSIONID]['stage']+=6
 
         # validate pin and return balance
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1:
