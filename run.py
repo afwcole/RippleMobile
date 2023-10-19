@@ -67,7 +67,7 @@ addr = register_multisig_account(
     msidn=phone_num,
     pin=pin,
 )
-tx_id = request_multisig_tx(addr, "233456498733", pin)
-sign_multisig_tx(addr, tx_id, "233123456789", "1234")
-sign_multisig_tx(addr, tx_id, "233456444333", "1234")
-sign_multisig_tx(addr, tx_id, "233678918273", "1234")
+# tx_id = request_multisig_tx(addr, "233456498733", pin)
+# sign_multisig_tx(addr, tx_id, "233123456789", "1234")
+# sign_multisig_tx(addr, tx_id, "233456444333", "1234")
+# sign_multisig_tx(addr, tx_id, "233678918273", "1234")
