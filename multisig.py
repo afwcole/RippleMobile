@@ -7,9 +7,9 @@ from schemas import TransactionRequest
 from sms import send_sms
 from storage import Account, MultiSigAccount, Storage
 
-from utils import encode, get_account_by_phone
+from utils import encode
 
-JSON_RPC_URL = os.environ.get('JSON_RPC_URL')
+JSON_RPC_URL = "https://s.altnet.rippletest.net:51234/" #os.environ.get('JSON_RPC_URL')
 CLIENT = JsonRpcClient(JSON_RPC_URL)
 
 db = Storage()
@@ -40,6 +40,7 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
         signer_entries.append(signer_entry)
 
     try: 
+        print(signer_entries)
         # CREATE THE MULTISIG WALLET
         multisig_wallet = wallet.generate_faucet_wallet(CLIENT)
         # CREATE WALLET'S FIRST SIGNER LIST SET TX
@@ -48,6 +49,7 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
             signer_quorum=min_num_signers,
             signer_entries=signer_entries
         )
+        print(signer_list_set_tx)
         print("Submitting multisig account transaction...")
         transaction.submit_and_wait(signer_list_set_tx, CLIENT, multisig_wallet)
 
@@ -78,13 +80,14 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
     except Exception as e:
         print(e)
 
-
 def request_multisig_tx(wallet_addr: str, transaction_request: TransactionRequest):
     # VERIFY USER EXITS
     user_account = db.get_basic_account(transaction_request.sender_phone_num)
     if not user_account:
+        print("User not found")
         return "User not found."
-    if user_account.pin != encode(transaction_request.pin):
+    if user_account.pin != transaction_request.pin:
+        print("Incorrect pin")
         return "Incorrect PIN."
     
     # CREATE MULTISIG TRANSACTION
@@ -95,17 +98,21 @@ def request_multisig_tx(wallet_addr: str, transaction_request: TransactionReques
         ),
     )
 
-    #GET MULTISIG ACCOUNT AND SAVE TXN TO ACCOUNT'S OPEN TXNS IN DB
+    # GET MULTISIG ACCOUNT AND SAVE TXN TO ACCOUNT'S OPEN TXNS IN DB
     multisig_account = db.get_multisig_account(wallet_addr)
+    if(not multisig_account):
+        return "No Multisig account exists with that address"
     txn = transaction.autofill(txn, CLIENT, multisig_account.min_num_signers)
-    multisig_account.open_txs[txn.account_txn_id] = [txn]
+    multisig_account.open_txs[txn.sequence] = [txn]
+    db.add_multisig_account(multisig_account)
+    print(multisig_account)
 
     try:
-        #NOTIFY ALL SIGNERS OF NEW TXNS REQUIRING SIGNING
+        # NOTIFY ALL SIGNERS OF NEW TXNS REQUIRING SIGNING
         for signer_phone in multisig_account.signers:
             send_sms(
-                f"""Hey! \n{msidn} created a new Multisign transaction, 
-                transaction id - {txn.account_txn_id}. This transaction 
+                f"""Hey {signer_phone}! \n{transaction_request.sender_phone_num} created a new 
+                Multisign transaction, transaction id - {txn.account_txn_id}. This transaction 
                 requires approval from atleast {multisig_account.min_num_signers} approvers.
                 Kindly go to approvals menu to approve this transaction.""", 
                 signer_phone
@@ -124,26 +131,25 @@ def sign_multisig_tx(wallet_addr: str, tx_id: str, msidn: str, pin: str):
     if user_account.pin != encode(pin):
         return "Incorrect PIN."
     
-    # GET SIGNER & MULTISG ACCOUNTS WITH LIST OF SIGNED TXES
-    signer_account = db.get_basic_account(msidn)
-    signer_wallet = signer_account.main_wallet
-
+    # GET MULTISG ACCOUNT AND BASE TX
     multisig_account = db.get_multisig_account(wallet_addr)
+    if(not multisig_account):
+        return "No Multisig account exists with that address"
     signed_tx_list = multisig_account.open_txs.get(tx_id)
 
     # SIGN TXN AND UPDATE MULTISIG ACCOUNT'S OPEN TXS
     base_tx = signed_tx_list[0]
-    signed_tx = transaction.sign(base_tx, signer_wallet, multisign=True)
+    signed_tx = transaction.sign(base_tx, user_account.main_wallet, multisign=True)
     signed_tx_list.append(signed_tx)
-    multisig_account.open_txs[base_tx.account_txn_id] = signed_tx_list
+    multisig_account.open_txs[base_tx.sequence] = signed_tx_list
 
-    #SUBMIT AND REMOVE TXN FROM OPEN TXNS IF MIN NUM SIGNERS IS REACHED
-    if (multisig_account.min_num_signers >= len(signed_tx_list) - 1):
+    # SUBMIT AND REMOVE TXN FROM OPEN TXNS IF MIN NUM SIGNERS IS REACHED
+    if (multisig_account.min_num_signers <= len(signed_tx_list) - 1):
         try:
             multi_tx = transaction.multisign(base_tx, signed_tx_list)
-            response = transaction.submit(multi_tx, CLIENT)
+            transaction.submit(multi_tx, CLIENT)
             multisig_account.open_txs.pop(tx_id)
-            #NOTIFY SIGNERS THAT A SUCCESFUL TXN HAS OCCURED
+            # NOTIFY SIGNERS THAT A SUCCESFUL TXN HAS OCCURED
             for signer_num in multisig_account.signers:
                 send_sms(
                     f"""Hey! \n{signer_num}, SUCCESFUL transaction sent.
@@ -154,3 +160,5 @@ def sign_multisig_tx(wallet_addr: str, tx_id: str, msidn: str, pin: str):
                 )
         except Exception as e:
             print(e)
+    
+    db.add_multisig_account(multisig_account)

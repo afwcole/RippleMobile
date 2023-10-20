@@ -56,24 +56,24 @@ class Account(BaseAccount):
             account_name=data['account_name'],
             account_type=data['account_type'],
             pin=data['pin'],
-            main_wallet=Wallet.from_dict(data['main_wallet']),
+            main_wallet=wallet_from_dict(data['main_wallet']),
             phone_number=data['phone_number'],
             other_wallets=data['other_wallets']
         )
 
 class MultiSigAccount(BaseAccount):
-    def __init__(self, account_name: str, account_type: str, main_wallet: Wallet, signers: list[str], min_num_signers: int):
+    def __init__(self, account_name: str, account_type: str, main_wallet: Wallet, signers: list[str], min_num_signers: int, open_txs: Dict[str, List[Transaction]] = {}):
         super().__init__(main_wallet.classic_address, account_name, account_type, main_wallet)
         self.signers = signers 
         self.min_num_signers = min_num_signers
-        self.open_txs: Dict[str, List[Transaction]] = {}
+        self.open_txs = open_txs
 
     def to_dict(self):
         data = super().to_dict()
         data.update({
             'signers': self.signers,
             'min_num_signers': self.min_num_signers,
-            'open_txs': {k: [tx.to_dict() for tx in v] for k, v in self.open_txs.items()}  # Assuming Transaction has a to_dict method
+            'open_txs': {k: [tx.to_dict() for tx in v] for k, v in self.open_txs.items()}
         })
         return data
 
@@ -82,7 +82,7 @@ class MultiSigAccount(BaseAccount):
         return cls(
             account_name=data['account_name'],
             account_type=data['account_type'],
-            main_wallet=Wallet.from_dict(data['main_wallet']),
+            main_wallet=wallet_from_dict(data['main_wallet']),
             signers=data['signers'],
             min_num_signers=data['min_num_signers'],
             open_txs={k: [Transaction.from_dict(tx) for tx in v] for k, v in data['open_txs'].items()}  # Assuming Transaction has a from_dict method
@@ -148,11 +148,10 @@ def wallet_to_dict(wallet : Wallet):
 
 def wallet_from_dict(data):
     return Wallet(
-        classic_address=data['classic_address'],
-        address=data['address'],
+        master_address=data['classic_address'],
         private_key=data['private_key'],
         public_key=data['public_key'],
-        algorithm=data['algorithm'],  # Fixed typo from 'algorith,' to 'algorithm'
+        algorithm=data['algorithm'],
         seed=data['seed']
     )
     

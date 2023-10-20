@@ -4,6 +4,7 @@ from multisig import (
     db,
     sign_multisig_tx,
 )
+from schemas import TransactionRequest
 from storage import Account, Storage
 from xrpl import wallet
 from xrpl.clients import JsonRpcClient
@@ -60,14 +61,23 @@ signers_phone_str = "233123456789, 233456444333, 233678918273"
 phone_num = "233456498733"
 pin = "1234"
 
-addr = register_multisig_account(
+register_multisig_account(
     account_name=account_name,
     min_num_signers=min_num_signers,
     signers_phones_str=signers_phone_str,
     msidn=phone_num,
     pin=pin,
 )
-# tx_id = request_multisig_tx(addr, "233456498733", pin)
-# sign_multisig_tx(addr, tx_id, "233123456789", "1234")
-# sign_multisig_tx(addr, tx_id, "233456444333", "1234")
-# sign_multisig_tx(addr, tx_id, "233678918273", "1234")
+
+request_multisig_tx(
+    "r9YD66XvVQkQrNq1HZXvc2iwGKuBMWf8XQ", 
+    TransactionRequest(
+        sender_phone_num="233456498733",
+        recipient_phone_num="233123456789",
+        amount_xrp=20,
+        pin="1234"
+    )
+)
+
+sign_multisig_tx("r9YD66XvVQkQrNq1HZXvc2iwGKuBMWf8XQ", "42186193", "233123456789", "1234")
+sign_multisig_tx("r9YD66XvVQkQrNq1HZXvc2iwGKuBMWf8XQ", "42186193", "233456444333", "1234")
