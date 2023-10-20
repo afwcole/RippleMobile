@@ -108,7 +108,6 @@ def request_multisig_tx(wallet_addr: str, transaction_request: TransactionReques
         print(e)
     return f"Successfully created transaction with id - {txn.account_txn_id}"
 
-
 def sign_multisig_tx(wallet_addr: str, tx_id: str, msidn: str, pin: str):
     # VERIFY USER EXITS
     user_account = db.get_account(msidn)
@@ -121,7 +120,8 @@ def sign_multisig_tx(wallet_addr: str, tx_id: str, msidn: str, pin: str):
     multisig_account = db.get_multisig_account(wallet_addr)
     if(not multisig_account):
         return "No Multisig account exists with that address"
-    signed_tx_list = multisig_account.open_txs.get(tx_id)
+
+    signed_tx_list = multisig_account.open_txs.get(str(tx_id))
 
     # SIGN TXN AND UPDATE MULTISIG ACCOUNT'S OPEN TXS
     base_tx = signed_tx_list[0]
@@ -146,8 +146,10 @@ def sign_multisig_tx(wallet_addr: str, tx_id: str, msidn: str, pin: str):
                 )
         except Exception as e:
             print(e)
+            return "something went wrong while trying to sign the transaction, try again later."
     
     db.add_multisig_account(multisig_account)
+    return "successfully signed transaction"
 
 def check_balance(wallet: str, phone_num:str, encoded_pin: str):
     user_account = db.get_account(phone_num)

@@ -185,21 +185,47 @@ def ussd_callback(payload:IncomingUSSDRequest):
 
         # get multi-sig account approvals
         elif sessions[payload.SESSIONID]['stage']==21 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and payload.USERDATA=='2':
-            response = "Approval List"
-            payload.MSGTYPE = True
-            sessions[payload.SESSIONID]['stage']+=5
-            # response will be open approvals
+            response = "Approval List\n"
+            wallet = sessions[payload.SESSIONID]['ms-wallet']  
+            ms_account = db.get_multisig_account(wallet.id)
+            data = ms_account.get_open_txs_for_wallet(account.id)
+
+            if not data:
+                response+="no pending approvals"
+            else:
+                payload.MSGTYPE = True
+                sessions[payload.SESSIONID]['stage']+=5
+                sessions[payload.SESSIONID]['approvals']=data
+                response += '\n'.join([
+                    f'{idx+1}. {approval.limit_amount.value} {approval.limit_amount.currency} from {approval.account} to {approval.limit_amount.issuer} at fee {approval.fee}' 
+                    for idx, approval in enumerate(data)
+                ])
 
         # select multi-sig account approval to sign
         elif sessions[payload.SESSIONID]['stage']==26 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and re.match(NUMBER_OPTION_PATTERN, payload.USERDATA):
-            response, payload.MSGTYPE = "Enter your 4 digit pin", True
-            sessions[payload.SESSIONID]['stage']+=1
-            # ask for pin to validate approval
-            # response will be open approvals
+            try:
+                idx = int(payload.USERDATA)-1
+                if idx <0:
+                    raise ValueError('invalid input')
+                approval = sessions[payload.SESSIONID]['approvals'][idx]
+            except:
+                response, payload.MSGTYPE = "Invalid input.", False
+            else:
+                response, payload.MSGTYPE = "Enter your 4 digit pin", True
+                sessions[payload.SESSIONID]['approval']=approval
+                sessions[payload.SESSIONID]['stage']+=1
 
         # validate multi-sig account approval pin and sign
         elif sessions[payload.SESSIONID]['stage']==27 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and re.match(PIN_PATTERN, payload.USERDATA):
-            response, payload.MSGTYPE = "You have requested to sign this transaction, you will be notified when complete", False
+            approval, payload.MSGTYPE = sessions[payload.SESSIONID]['approval'], False
+            wallet = sessions[payload.SESSIONID]['ms-wallet']
+            response = sign_multisig_tx(
+                wallet_addr=wallet.id, 
+                tx_id=approval.sequence, 
+                msidn=payload.MSISDN, 
+                pin=payload.USERDATA
+            )
+            # response, payload.MSGTYPE = "You have requested to sign this transaction, you will be notified when complete", False
             # ask for pin to validate approval
 
         #multi-sig account request payment receipient number
@@ -466,7 +492,6 @@ def ussd_callback(payload:IncomingUSSDRequest):
             response = "Thank you for using our service, come back soon :)"
             payload.MSGTYPE = False
         
-
     elif payload.USERDATA == '0':
         response += "1. Register New Basic Wallet \n"
         response += "2. Register New Merchant Wallet \n"
