@@ -38,16 +38,17 @@ def ussd_callback(payload:IncomingUSSDRequest):
         response = "Welcome to Ripple mobile \n"
         account = get_account_by_phone(payload.MSISDN)
         if account:
-            response += "0. My Approvals \n"
-            response += "1. Check Wallet Balance \n"
-            response += "2. Send XRP \n"
-            response += "3. Get Account Info \n"
-            response += "4. Get Transaction History \n"
+            response += "0.Approvals\n"
+            response += "1.Wallet Balance\n"
+            response += "2.Send XRP\n"
+            response += "3.Account Info\n"
+            response += "4.Transaction History\n"
+            response += "5.Shared Wallet\n"
             if account['account_type']=='MERCHANT':
-                response += "5. Request Payment\n"
-                response += "6. Exit"
+                response += "6.Request Payment\n"
+                response += "7.Exit"
             else:
-                response += "5. Exit"
+                response += "6.Exit"
         else:
             response += "1. Register New Basic Wallet \n"
             response += "2. Register New Merchant Wallet \n"
@@ -94,26 +95,119 @@ def ussd_callback(payload:IncomingUSSDRequest):
             del sessions[payload.SESSIONID]
 
         # start page
-        elif payload.USERDATA == '0' or payload.USERDATA == '1' or payload.USERDATA == '3' or payload.USERDATA == '4':
+        elif (payload.USERDATA == '0' or payload.USERDATA == '1' or payload.USERDATA == '3' or payload.USERDATA == '4') and sessions[payload.SESSIONID]['stage']==0:
             sessions[payload.SESSIONID]['prev_choice'] = payload.USERDATA
             response = "Enter your 4 digit wallet pin"
             payload.MSGTYPE = True
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
 
-        # start page
+        # send xrp
         if payload.USERDATA == '2' and sessions[payload.SESSIONID]['stage']==0:
             response = "enter receipient phone number"
             payload.MSGTYPE = True
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
 
+        # multisig menu
+        if payload.USERDATA == '5' and sessions[payload.SESSIONID]['stage']==0:
+            response = "Shared Account(Multi Signature)\n"
+            response += "wallets owned by 2 or more people\n"
+            response += "1. Shared Accounts\n"
+            response += "2. Create Shared Account\n"
+            sessions[payload.SESSIONID]['prev_choice']=payload.USERDATA
+            sessions[payload.SESSIONID]['stage']+=10
+            payload.MSGTYPE = True
+            
         # Request payment thread for 5 for MERCHANT account_type
-        if payload.USERDATA == '5' and account['account_type']=='MERCHANT' and sessions[payload.SESSIONID]['stage']==0:
+        if payload.USERDATA == '6' and account['account_type']=='MERCHANT' and sessions[payload.SESSIONID]['stage']==0:
             response = "POS Request Payment\n" 
             response = "enter payment request amount"
             payload.MSGTYPE = True
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
             sessions[payload.SESSIONID]['prev_choice'] = payload.USERDATA
 
+        # get multi-sig wallets
+        elif sessions[payload.SESSIONID]['stage']==10 and sessions[payload.SESSIONID]['prev_choice']=="5" and payload.USERDATA=='1':
+            response, payload.MSGTYPE = "Shared Accounts\n", True
+            # list of shared accounts
+            # add signer
+            # remove signer
+            # get account info
+
+        # set account name in session for multi-sig
+        elif sessions[payload.SESSIONID]['stage']==10 and sessions[payload.SESSIONID]['prev_choice']=="5" and payload.USERDATA=='2':
+            response = "Create Shared Account\n"
+            response += "enter multi-signature account name"
+            payload.MSGTYPE = True
+            sessions[payload.SESSIONID]['multi-sig'] = {
+                "account_name": str(),
+                "min_signers": int(),
+                "signers": [payload.MSISDN],
+            }
+            sessions[payload.SESSIONID]['stage']+=1
+   
+        # ask multi-sig signers menu
+        elif sessions[payload.SESSIONID]['stage']==11 and sessions[payload.SESSIONID]['prev_choice']=="5":
+            response = "Add Shared Account Signers\n"
+            response+="enter phone number\n"
+            sessions[payload.SESSIONID]['multi-sig']['account_name'] = payload.USERDATA
+            sessions[payload.SESSIONID]['stage']+=1
+            payload.MSGTYPE = True
+
+        # multi-sig recurring phone number ask and save phone number
+        elif sessions[payload.SESSIONID]['stage']==12 and sessions[payload.SESSIONID]['prev_choice']=="5" and re.match(PHONE_PATTERN, payload.USERDATA):
+
+            if not get_account_by_phone(payload.USERDATA):
+                response, payload.MSGTYPE = "the signer number is not registered", False
+            
+            # elif payload.MSISDN==payload.USERDATA:
+            #     response, payload.MSGTYPE = "you are already a signer...", False
+
+            else:
+                response = "Create Shared Account\n"
+                response += "1. Add another signer\n"
+                response += "2. Done\n"
+                sessions[payload.SESSIONID]['multi-sig']['signers'].append(payload.USERDATA)
+                sessions[payload.SESSIONID]['stage']+=1
+                payload.MSGTYPE = True
+
+        # multi-sig recurring phone number
+        elif sessions[payload.SESSIONID]['stage']==13 and sessions[payload.SESSIONID]['prev_choice']=="5":
+            response="Add Shared Account Signers\n"
+            response+="enter phone number\n"
+
+            payload.MSGTYPE=True
+
+            if payload.USERDATA == "1":
+                sessions[payload.SESSIONID]['stage']-=1
+            elif payload.USERDATA =="2":
+                sessions[payload.SESSIONID]['stage']+=1
+                response = "Set minimun number of signers\n"
+                response+="enter number\n"
+            else:
+                response, payload.MSGTYPE = "invalid input...", False
+
+        # validate and set min signer count
+        elif sessions[payload.SESSIONID]['stage']==14 and sessions[payload.SESSIONID]['prev_choice']=="5":
+            try:
+                count = int(payload.USERDATA)
+            except:
+                response, payload.MSGTYPE="invalid input...\n", False
+            else: 
+                if count > len(sessions[payload.SESSIONID]['multi-sig']['signers']):
+                    response, payload.MSGTYPE="minimum number of signers specified is more than available signers\n", False
+                else:
+                    response="Enter pin to create shared wallet\n"
+                    sessions[payload.SESSIONID]['multi-sig']['min_signers'] = payload.USERDATA
+                    sessions[payload.SESSIONID]['stage']+=1
+                    payload.MSGTYPE=True
+
+        #  create multisign account
+        elif sessions[payload.SESSIONID]['stage']==15 and sessions[payload.SESSIONID]['prev_choice']=="5" and re.match(PIN_PATTERN, payload.USERDATA):
+            # validate pin
+            response = "We are creating your shared(multi-sig) account, you and other signers will be notified when complete\n"
+            payload.MSGTYPE=False
+            del sessions[payload.SESSIONID]
+        
         # validate pin for My Approvals
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1 and sessions[payload.SESSIONID]['prev_choice']=="0":
 
@@ -174,14 +268,14 @@ def ussd_callback(payload:IncomingUSSDRequest):
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
 
         # validate amount for POS
-        elif re.match(AMOUNT, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1 and sessions[payload.SESSIONID]['prev_choice']=='5':
+        elif re.match(AMOUNT, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1 and sessions[payload.SESSIONID]['prev_choice']=='6':
             response = "Enter payee phone number"
             payload.MSGTYPE = True
             sessions[payload.SESSIONID]['amount'] = payload.USERDATA
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
 
         # validate pin for POS request Payment
-        elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==3 and sessions[payload.SESSIONID]['prev_choice']=='5':
+        elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==3 and sessions[payload.SESSIONID]['prev_choice']=='6':
             payee = get_account_by_phone(sessions[payload.SESSIONID]['receipent_number'])
 
             if not payee:
@@ -257,7 +351,7 @@ def ussd_callback(payload:IncomingUSSDRequest):
                 del session[key]
 
         # exit
-        if payload.USERDATA == '6' or all((payload.USERDATA == '5', account['account_type']=='BASIC')):
+        if payload.USERDATA == '7' or all((payload.USERDATA == '6', account['account_type']=='BASIC')):
             response = "Thank you for using our service, come back soon :)"
             payload.MSGTYPE = False
         
