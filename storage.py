@@ -69,6 +69,15 @@ class MultiSigAccount(BaseAccount):
         self.min_num_signers = min_num_signers
         self.open_txs = open_txs
 
+    def get_open_txs_for_wallet(self, wallet_addr: str) -> List[str]:
+        open_txns_for_wallet = [
+            self.open_txs.get(txn_id)[0]
+            for txn_id, signed_txns in self.open_txs.items()
+            if not any(signed_tx.account == wallet_addr for signed_tx in signed_txns)
+        ]
+        return open_txns_for_wallet
+
+                
     def to_dict(self):
         data = super().to_dict()
         data.update({
