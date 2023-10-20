@@ -7,9 +7,10 @@ from schemas import RegistrationRequest, TransactionRequest
 from utils import format_transactions, get_account_by_phone, save_to_json, load_data_from_json, encode
 from dotenv import load_dotenv
 from sms import send_sms
-from storage import Account, db
+from storage import Account, Storage
 
 load_dotenv()
+db = Storage()
 
 JSON_RPC_URL = os.environ.get('JSON_RPC_URL')
 CLIENT = JsonRpcClient(JSON_RPC_URL)
@@ -27,7 +28,6 @@ def register_account(registration_request: RegistrationRequest, account_type:str
     except Exception as e:
         return send_sms("Something went wrong, try again later", registration_request.phone_num)
     send_sms(f"Welcome to Ripple Mobile! \nYour {account_type.lower()} account was successfully created for phone number, {registration_request.phone_num}. \nDial *920*106# to start using Ripple Mobile.", registration_request.phone_num)
-    
 
 def check_balance(phone_num: str, pin: str):
     user_account = db.get_account(phone_num)
