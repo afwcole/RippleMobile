@@ -69,7 +69,7 @@ class MultiSigAccount(BaseAccount):
         self.min_num_signers = min_num_signers
         self.open_txs = open_txs
 
-    def get_open_txs_for_wallet(self, wallet_addr: str) -> List[str]:
+    def get_open_txs_for_wallet(self, wallet_addr: str) -> List[Transaction]:
         open_txns_for_wallet = [
             self.open_txs.get(txn_id)[0]
             for txn_id, signed_txns in self.open_txs.items()
