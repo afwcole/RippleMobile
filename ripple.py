@@ -7,6 +7,7 @@ from schemas import RegistrationRequest, TransactionRequest
 from utils import format_transactions, get_account_by_phone, save_to_json, load_data_from_json, encode
 from dotenv import load_dotenv
 from sms import send_sms
+from storage import Account, db
 
 load_dotenv()
 
@@ -14,32 +15,30 @@ JSON_RPC_URL = os.environ.get('JSON_RPC_URL')
 CLIENT = JsonRpcClient(JSON_RPC_URL)
 
 def register_account(registration_request: RegistrationRequest, account_type:str):
-    registration_dict = registration_request.model_dump()
-        
     try:
         new_wallet = wallet.generate_faucet_wallet(CLIENT)
-        registration_dict['wallet_address'] = new_wallet.classic_address
-        registration_dict['wallet_seed'] = new_wallet.seed
-        registration_dict['account_type'] = account_type
+        db.add_basic_account(Account(
+            account_name=registration_request.name,
+            account_type=account_type,
+            pin=registration_request.pin,
+            main_wallet=new_wallet,
+            phone_number=registration_request.phone_num,
+        ))
     except Exception as e:
         return send_sms("Something went wrong, try again later", registration_request.phone_num)
-
-    existing_accounts = load_data_from_json()
-    existing_accounts.append(registration_dict)
-    save_to_json(existing_accounts)
     send_sms(f"Welcome to Ripple Mobile! \nYour {account_type.lower()} account was successfully created for phone number, {registration_request.phone_num}. \nDial *920*106# to start using Ripple Mobile.", registration_request.phone_num)
     
 
 def check_balance(phone_num: str, pin: str):
-    user_account = get_account_by_phone(phone_num)
+    user_account = db.get_account(phone_num)
     if not user_account:
         return "User not found."
-
-    if user_account['pin'] != encode(pin):
+    
+    if user_account.pin != encode(pin):
         return "Incorrect PIN."
     
     try:
-        acct_info = AccountInfo(account=user_account['wallet_address'], ledger_index="validated")
+        acct_info = AccountInfo(account=user_account.main_wallet.classic_address, ledger_index="validated")
         response = CLIENT.request(acct_info)
         send_sms(f"Current balance is {int(response.result['account_data']['Balance']) / 1_000_000} XRP", phone_num)
         return f"You have {int(response.result['account_data']['Balance']) / 1_000_000} XRP"
@@ -48,11 +47,15 @@ def check_balance(phone_num: str, pin: str):
         return "Something went wrong, try again later"
 
 def send_xrp(transaction_request: TransactionRequest):
-    sender = get_account_by_phone(transaction_request.sender_phone_num)
-    recipient = get_account_by_phone(transaction_request.recipient_phone_num)
+    user_account = db.get_account(transaction_request.sender_phone_num)
+    recipient = db.get_account(transaction_request.recipient_phone_num)
+    if not user_account:
+        return "User not found."
+    if user_account.pin != encode(transaction_request.pin):
+        return "Incorrect PIN."
     
-    sending_wallet = wallet.Wallet.from_seed(sender['wallet_seed'])
-    receiving_wallat = wallet.Wallet.from_seed(recipient['wallet_seed'])
+    sending_wallet = user_account.main_wallet
+    receiving_wallat = recipient.main_wallet
     payment = Payment(
         account=sending_wallet.classic_address,
         amount=utils.xrp_to_drops(transaction_request.amount_xrp),
@@ -76,17 +79,17 @@ def send_xrp(transaction_request: TransactionRequest):
         return send_sms("Something went wrong, try again later", transaction_request.sender_phone_num)
 
 def get_account_info(phone:str, pin: str):
-    user_account = get_account_by_phone(phone)
+    user_account = db.get_account(phone)
     if not user_account:
         return "User not found."
 
-    if user_account['pin'] != encode(pin):
+    if user_account.pin != encode(pin):
         return "Incorrect PIN."
     
     try:
         if user_account:
             response = CLIENT.request(AccountInfo(
-                account=user_account["wallet_address"],
+                account=user_account.main_wallet.classic_address,
                 ledger_index="validated",
                 strict=True,
             ))
@@ -99,16 +102,16 @@ def get_account_info(phone:str, pin: str):
         return "Something went wrong, try again later"
     
 def get_transaction_history(phone: str, pin: str) -> str:
-    user_account = get_account_by_phone(phone)
+    user_account = db.get_account(phone)
     
     if not user_account:
         return "User not found."
 
-    if user_account['pin'] != encode(pin):
+    if user_account.pin != encode(pin):
         return "Incorrect PIN."
     
     try:
-        response = CLIENT.request(AccountTx(account=user_account["wallet_address"]))
+        response = CLIENT.request(AccountTx(account=user_account.main_wallet.classic_address))
         transactions = response.result["transactions"]
         
         formatted_txn_msg = format_transactions(transactions)
