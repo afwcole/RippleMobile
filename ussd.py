@@ -125,13 +125,23 @@ def ussd_callback(payload:IncomingUSSDRequest):
             sessions[payload.SESSIONID]['stage']=sessions[payload.SESSIONID]['stage']+1
             sessions[payload.SESSIONID]['prev_choice'] = payload.USERDATA
 
-        # get multi-sig wallets
+        # get multi-sig wallets (list of shared accounts)
         elif sessions[payload.SESSIONID]['stage']==10 and sessions[payload.SESSIONID]['prev_choice']=="5" and payload.USERDATA=='1':
+            # get shared accounts for payload.MSISDN
+            # set accounts to session
             response, payload.MSGTYPE = "Shared Accounts\n", True
-            # list of shared accounts
-            # add signer
-            # remove signer
-            # get account info
+            response = "Shared Account(Multi Signature)\n"
+            sessions[payload.SESSIONID]['stage']+=10
+
+        # get multi-sig account info
+        elif sessions[payload.SESSIONID]['stage']==20 and sessions[payload.SESSIONID]['prev_choice']=="5":
+            # see signers and balance 
+            # send sms
+            pass
+        
+        # initiate multi-sig payment
+        elif sessions[payload.SESSIONID]['stage']==21 and sessions[payload.SESSIONID]['prev_choice']=="5":
+            pass
 
         # set account name in session for multi-sig
         elif sessions[payload.SESSIONID]['stage']==10 and sessions[payload.SESSIONID]['prev_choice']=="5" and payload.USERDATA=='2':
