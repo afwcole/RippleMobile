@@ -35,7 +35,7 @@ class BaseAccount:
         return self.id == other.id and self.account_name == other.account_name
 
 class Account(BaseAccount):
-    def __init__(self, account_name: str, account_type: str, pin: str, main_wallet: Wallet, phone_number: str, other_wallets: list[str]):
+    def __init__(self, account_name: str, account_type: str, pin: str, main_wallet: Wallet, phone_number: str, other_wallets: list[str] = []):
         super().__init__(phone_number, account_name, account_type, main_wallet)
         self.phone_number = phone_number
         self.other_wallets = other_wallets
@@ -95,7 +95,7 @@ class Storage:
         self.multisig_accounts = {}  # key: id, value: MultiSigAccount
         self.load_data()
 
-    def get_basic_account(self, phone_number: str) -> Account:
+    def get_account(self, phone_number: str) -> Account:
         return self.accounts.get(phone_number)
 
     def get_multisig_account(self, wallet_addr: str) -> MultiSigAccount:
@@ -154,4 +154,3 @@ def wallet_from_dict(data):
         algorithm=data['algorithm'],
         seed=data['seed']
     )
-    

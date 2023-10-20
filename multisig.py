@@ -5,18 +5,16 @@ from xrpl.models.transactions import SignerEntry, SignerListSet, TrustSet
 from xrpl.models.amounts import IssuedCurrencyAmount
 from schemas import TransactionRequest
 from sms import send_sms
-from storage import Account, MultiSigAccount, Storage
+from storage import Account, MultiSigAccount, Storage, db
 
 from utils import encode
 
 JSON_RPC_URL = "https://s.altnet.rippletest.net:51234/" #os.environ.get('JSON_RPC_URL')
 CLIENT = JsonRpcClient(JSON_RPC_URL)
 
-db = Storage()
-
 def register_multisig_account(account_name: str, min_num_signers: int, signers_phones_str: str, msidn: str, pin: str):
     # VERIFY USER EXITS
-    user_account = db.get_basic_account(msidn)
+    user_account = db.get_account(msidn)
     if not user_account:
         return "User not found."
     if user_account.pin != encode(pin):
@@ -31,7 +29,7 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
     print("Creating Signer Entries for account...")
     signer_entries = []
     for signer_phone_num in signer_phone_nums:
-        account_info = db.get_basic_account(signer_phone_num)
+        account_info = db.get_account(signer_phone_num)
         if (not account_info):
             return f"No account with this phone number: {signer_phone_num}"
     
@@ -66,7 +64,7 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
         #UPDATE ALL SIGNER ACCOUNT'S INFO IN DB AND SEND OUT CORRESPONDING SMS
         print("Updating signer accounts and sending out smses...")
         for signer_phone_num in signer_phone_nums:
-            signer_account = db.get_basic_account(signer_phone_num)
+            signer_account = db.get_account(signer_phone_num)
             signer_account.other_wallets.append(new_multisig_account.id)
             db.add_basic_account(signer_account)
             send_sms(
@@ -82,7 +80,7 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
 
 def request_multisig_tx(wallet_addr: str, transaction_request: TransactionRequest):
     # VERIFY USER EXITS
-    user_account = db.get_basic_account(transaction_request.sender_phone_num)
+    user_account = db.get_account(transaction_request.sender_phone_num)
     if not user_account:
         print("User not found")
         return "User not found."
@@ -125,7 +123,7 @@ def request_multisig_tx(wallet_addr: str, transaction_request: TransactionReques
 
 def sign_multisig_tx(wallet_addr: str, tx_id: str, msidn: str, pin: str):
     # VERIFY USER EXITS
-    user_account = db.get_basic_account(msidn)
+    user_account = db.get_account(msidn)
     if not user_account:
         return "User not found."
     if user_account.pin != encode(pin):

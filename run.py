@@ -1,15 +1,17 @@
+from xrpl import wallet
 from multisig import (
     register_multisig_account,
     request_multisig_tx,
-    db,
     sign_multisig_tx,
 )
 from schemas import TransactionRequest
-from storage import Account, Storage
-from xrpl import wallet
 from xrpl.clients import JsonRpcClient
 
+from storage import Account, Storage
+
 CLIENT = JsonRpcClient("https://s.altnet.rippletest.net:51234/")
+
+db = Storage()
 
 db.add_basic_account(
     basic_account=Account(
