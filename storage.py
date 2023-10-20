@@ -39,7 +39,8 @@ class Account(BaseAccount):
         super().__init__(phone_number, account_name, account_type, main_wallet)
         self.phone_number = phone_number
         self.other_wallets = other_wallets
-        self.pin = encode(pin)
+        self.pin = pin
+        # encode(pin)
     
     def to_dict(self):
         data = super().to_dict()
@@ -96,9 +97,11 @@ class Storage:
         self.load_data()
 
     def get_account(self, phone_number: str) -> Account:
+        self.load_data()
         return self.accounts.get(phone_number)
 
     def get_multisig_account(self, wallet_addr: str) -> MultiSigAccount:
+        self.load_data()
         return self.multisig_accounts.get(wallet_addr)
 
     def add_basic_account(self, basic_account: Account):
@@ -123,7 +126,8 @@ class Storage:
                 data = json.load(f)
             self.accounts = {k: Account.from_dict(v) for k, v in data.get('accounts', {}).items()}
             self.multisig_accounts = {k: MultiSigAccount.from_dict(v) for k, v in data.get('multisig_accounts', {}).items()}
-        except FileNotFoundError:
+        except FileNotFoundError as e:
+            print(e)
             pass  # No data file exists yet
 
     def __str__(self):

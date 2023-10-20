@@ -3,16 +3,18 @@ from xrpl import wallet, transaction
 from xrpl.clients import JsonRpcClient
 from xrpl.models.transactions import SignerEntry, SignerListSet, TrustSet
 from xrpl.models.amounts import IssuedCurrencyAmount
+from xrpl.models.requests import AccountInfo
 from schemas import TransactionRequest
 from sms import send_sms
-from storage import Account, MultiSigAccount, Storage, db
-
+from storage import Account, MultiSigAccount, Storage
 from utils import encode
+
+db = Storage()
 
 JSON_RPC_URL = "https://s.altnet.rippletest.net:51234/" #os.environ.get('JSON_RPC_URL')
 CLIENT = JsonRpcClient(JSON_RPC_URL)
 
-def register_multisig_account(account_name: str, min_num_signers: int, signers_phones_str: str, msidn: str, pin: str):
+def register_multisig_account(account_name: str, min_num_signers: int, signer_phone_nums: list, msidn: str, pin: str):
     # VERIFY USER EXITS
     user_account = db.get_account(msidn)
     if not user_account:
@@ -21,12 +23,10 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
         return "Incorrect PIN."
     
     # GET ALL SIGNER PHONE NUMBERS FROM STRING (MUST BE LESS THAN 8 SIGNERS)
-    signer_phone_nums = [signer_phone_num.strip() for signer_phone_num in signers_phones_str.split(",")]
     if len(signer_phone_nums) > 8:
         return "Too many signers, Multisign accounts can have a max of 8 signers"
     
     # GET EACH SIGNER'S ACCOUNT AND MAP INTO A LIST OF SIGNER ENTRIES
-    print("Creating Signer Entries for account...")
     signer_entries = []
     for signer_phone_num in signer_phone_nums:
         account_info = db.get_account(signer_phone_num)
@@ -38,7 +38,6 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
         signer_entries.append(signer_entry)
 
     try: 
-        print(signer_entries)
         # CREATE THE MULTISIG WALLET
         multisig_wallet = wallet.generate_faucet_wallet(CLIENT)
         # CREATE WALLET'S FIRST SIGNER LIST SET TX
@@ -47,8 +46,6 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
             signer_quorum=min_num_signers,
             signer_entries=signer_entries
         )
-        print(signer_list_set_tx)
-        print("Submitting multisig account transaction...")
         transaction.submit_and_wait(signer_list_set_tx, CLIENT, multisig_wallet)
 
         # CREATE CORRESPONDING MULTISIG ACCOUNT FOR RIPPLE MOBILE STORAGE
@@ -62,30 +59,26 @@ def register_multisig_account(account_name: str, min_num_signers: int, signers_p
         db.add_multisig_account(new_multisig_account)
 
         #UPDATE ALL SIGNER ACCOUNT'S INFO IN DB AND SEND OUT CORRESPONDING SMS
-        print("Updating signer accounts and sending out smses...")
         for signer_phone_num in signer_phone_nums:
             signer_account = db.get_account(signer_phone_num)
             signer_account.other_wallets.append(new_multisig_account.id)
             db.add_basic_account(signer_account)
             send_sms(
-                f"""Hey! \n{msidn} created a new Multisign account, and has made you 
-                1 of {len(signer_phone_nums)} approvers for this account. A minimum of {min_num_signers} 
-                approvals are required for any transaction from this account. \n Enjoy transacting with 
-                Ripple Mobile securely.""", 
+                f"Hey! \n{msidn} created a new Multisign account, and has made you 1 of {len(signer_phone_nums)} approvers for this account. A minimum of {min_num_signers} approvals are required for any transaction from this account. \
+                \n Enjoy transacting with Ripple Mobile securely.", 
                 signer_phone_num
             )
         return f"Succesfully created new Multisig account - {account_name}. SMS messages have been sent out to all signers."
     except Exception as e:
+        send_sms(f"""Hey! \nSomething went wrong while creating your multi sign account, try again later""", msidn)
         print(e)
 
 def request_multisig_tx(wallet_addr: str, transaction_request: TransactionRequest):
     # VERIFY USER EXITS
     user_account = db.get_account(transaction_request.sender_phone_num)
     if not user_account:
-        print("User not found")
         return "User not found."
     if user_account.pin != transaction_request.pin:
-        print("Incorrect pin")
         return "Incorrect PIN."
     
     # CREATE MULTISIG TRANSACTION
@@ -103,21 +96,16 @@ def request_multisig_tx(wallet_addr: str, transaction_request: TransactionReques
     txn = transaction.autofill(txn, CLIENT, multisig_account.min_num_signers)
     multisig_account.open_txs[txn.sequence] = [txn]
     db.add_multisig_account(multisig_account)
-    print(multisig_account)
 
     try:
         # NOTIFY ALL SIGNERS OF NEW TXNS REQUIRING SIGNING
         for signer_phone in multisig_account.signers:
             send_sms(
-                f"""Hey {signer_phone}! \n{transaction_request.sender_phone_num} created a new 
-                Multisign transaction, transaction id - {txn.account_txn_id}. This transaction 
-                requires approval from atleast {multisig_account.min_num_signers} approvers.
-                Kindly go to approvals menu to approve this transaction.""", 
+                f"Hey {signer_phone}! \n{transaction_request.sender_phone_num} created a new Multisign transaction, transaction id - {txn.sequence}. This transaction requires approval from atleast {multisig_account.min_num_signers} approvers. Kindly go to approvals menu to approve this transaction.", 
                 signer_phone
             )
     except Exception as e:
         print(e)
-
     return f"Successfully created transaction with id - {txn.account_txn_id}"
 
 
@@ -160,3 +148,20 @@ def sign_multisig_tx(wallet_addr: str, tx_id: str, msidn: str, pin: str):
             print(e)
     
     db.add_multisig_account(multisig_account)
+
+def check_balance(wallet: str, phone_num:str, encoded_pin: str):
+    user_account = db.get_account(phone_num)
+    if not user_account:
+        return "User not found."
+    
+    if user_account.pin != encoded_pin:
+        return "Incorrect PIN."
+    
+    try:
+        acct_info = AccountInfo(account=wallet, ledger_index="validated")
+        response = CLIENT.request(acct_info)
+        send_sms(f"Current balance is {int(response.result['account_data']['Balance']) / 1_000_000} XRP", phone_num)
+        return f"{int(response.result['account_data']['Balance']) / 1_000_000} XRP"
+    except Exception as e:
+        print(e)
+        return "Something went wrong, try again later"
