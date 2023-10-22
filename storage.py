@@ -102,14 +102,21 @@ class MultiSigAccount(BaseAccount):
 class Storage:
     def __init__(self, file_path='data.json'):
         self.file_path = file_path
-        self.accounts = {}  # key: phone_number, value: Account
-        self.multisig_accounts = {}  # key: id, value: MultiSigAccount
+        self.accounts: Dict[str, Account] = {}  # key: phone_number, value: Account
+        self.multisig_accounts: Dict[str, MultiSigAccount] = {}  # key: id, value: MultiSigAccount
         self.initialize_data_file()
         self.load_data()
 
     def get_account(self, phone_number: str) -> Account:
         self.load_data()
         return self.accounts.get(phone_number)
+    
+    def get_account_by_address(self, wallet_addr: str) -> Account:
+        self.load_data()
+        for account in self.accounts.values():
+            if (account.main_wallet.classic_address == wallet_addr):
+                return account
+        return None
 
     def get_multisig_account(self, wallet_addr: str) -> MultiSigAccount:
         self.load_data()
