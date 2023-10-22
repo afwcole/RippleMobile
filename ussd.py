@@ -1,4 +1,4 @@
-from schemas import USSDResponse, IncomingUSSDRequest, RegistrationRequest, TransactionRequest
+from schemas import USSDResponse, IncomingUSSDRequest, RegistrationRequest, TransactionRequest, SIMMessage
 from ripple import get_account_info, get_transaction_history, register_account, check_balance, send_xrp, encode
 from collections import defaultdict
 from dotenv import get_key
@@ -21,7 +21,7 @@ AMOUNT = r'\$?\d+(?:\.\d{1,2})?'
 sessions = defaultdict(lambda: defaultdict(dict))
 cache = cachetools.TTLCache(maxsize=int(get_key('.env','MAX_CACHE_SIZE')), ttl=float(get_key('.env','CACHE_ITEM_TTL'))) 
 
-def ussd_callback(payload:IncomingUSSDRequest):
+def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
     db = Storage()
     global response
 
@@ -193,6 +193,7 @@ def ussd_callback(payload:IncomingUSSDRequest):
             if not data:
                 response+="no pending approvals"
             else:
+                print(data[0])
                 payload.MSGTYPE = True
                 sessions[payload.SESSIONID]['stage']+=5
                 sessions[payload.SESSIONID]['approvals']=data
@@ -528,11 +529,16 @@ def ussd_callback(payload:IncomingUSSDRequest):
         response = "Invalid input"
         payload.MSGTYPE = False
 
-    return USSDResponse(
+    res_obj =  USSDResponse(
         USERID = payload.USERID,
         MSISDN = payload.MSISDN,
         USERDATA = payload.USERDATA,
         MSG = response,
         MSGTYPE = payload.MSGTYPE
-    )    
+    )
+
+    if sim:
+        res_obj.SIM_MESSAGE = SIMMessage(MESSAGE="some message", TO="2330303434")
+
+    return res_obj
     

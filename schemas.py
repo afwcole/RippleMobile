@@ -30,12 +30,17 @@ class IncomingUSSDRequest(BaseModel):
     NETWORK: str
     SESSIONID: str
 
+class SIMMessage(BaseModel):
+    TO: str
+    MESSAGE: str
+
 class USSDResponse(BaseModel):
     USERID: str
     MSISDN: str
     USERDATA: str
     MSG: str
     MSGTYPE: bool
+    SIM_MESSAGE: SIMMessage = None
 
 class NaloSMSRequest(BaseModel):
     key: str
