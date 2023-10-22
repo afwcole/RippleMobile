@@ -1,7 +1,7 @@
 import os
-from xrpl import wallet, transaction
+from xrpl import wallet, transaction, utils
 from xrpl.clients import JsonRpcClient
-from xrpl.models.transactions import SignerEntry, SignerListSet, TrustSet
+from xrpl.models.transactions import SignerEntry, SignerListSet, TrustSet, Payment
 from xrpl.models.amounts import IssuedCurrencyAmount
 from xrpl.models.requests import AccountInfo
 from schemas import TransactionRequest
@@ -82,11 +82,12 @@ def request_multisig_tx(wallet_addr: str, transaction_request: TransactionReques
         return "Incorrect PIN."
     
     # CREATE MULTISIG TRANSACTION
-    txn = TrustSet(
+    recipient_account = db.get_account(transaction_request.recipient_phone_num)
+    
+    txn = Payment(
         account=wallet_addr,
-        limit_amount=IssuedCurrencyAmount(
-            currency="USD", issuer=user_account.main_wallet.classic_address, value="100"
-        ),
+        amount=utils.xrp_to_drops(transaction_request.amount_xrp),
+        destination=recipient_account.main_wallet.classic_address
     )
 
     # GET MULTISIG ACCOUNT AND SAVE TXN TO ACCOUNT'S OPEN TXNS IN DB
