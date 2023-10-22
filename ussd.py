@@ -15,7 +15,8 @@ from multisig import (
 response = ''
 PIN_PATTERN = r'^\d{4}$'
 POS_CODE_PATTERN = r'\*920\*106\*\d{3}$'
-PHONE_PATTERN = r'^(233|0)\d{9}$'
+PHONE_PATTERN = r'^\d{10,12}$'
+# r'^(233|0)\d{9}$'
 NUMBER_OPTION_PATTERN=r'\b\d{1,2}\b'
 AMOUNT = r'\$?\d+(?:\.\d{1,2})?'
 sessions = defaultdict(lambda: defaultdict(dict))
@@ -537,7 +538,7 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
     )
 
     if sim:
-        res_obj.SIM_MESSAGE = SIMMessage(MESSAGE="some message", TO="2330303434")
+        res_obj.SIM_MESSAGE = SIMMessage(MESSAGE="some message", TO=payload.MSISDN)
 
     return res_obj
     
