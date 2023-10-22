@@ -185,21 +185,19 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
 
         # get multi-sig account approvals
         elif sessions[payload.SESSIONID]['stage']==21 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and payload.USERDATA=='2':
-            response = "Approval List\n"
             wallet = sessions[payload.SESSIONID]['ms-wallet']  
             ms_account = db.get_multisig_account(wallet.id)
             data = ms_account.get_open_txs_for_wallet(account.id)
+            response = f"Approval List({ms_account.account_name})\n"
 
             if not data:
                 response+="no pending approvals"
             else:
-                print(data[0])
-                # int(acct_info.get('Balance')) / 1_000_000
                 payload.MSGTYPE = True
                 sessions[payload.SESSIONID]['stage']+=5
                 sessions[payload.SESSIONID]['approvals']=data
                 response += '\n'.join([
-                    f'{idx+1}. {int(approval.amount)/1_000_000} XRP from {ms_account.account_name}({approval.account}) to {approval.destination} at fee {int(approval.fee)/1_000_000} XRP' 
+                    f'{idx+1}. {int(approval.amount)/1_000_000} XRP to {db.get_account_by_address(approval.destination).account_name}({approval.destination}) at fee {"{:.8f}".format(int(approval.fee)/1_000_000)} XRP' 
                     for idx, approval in enumerate(data)
                 ])
 

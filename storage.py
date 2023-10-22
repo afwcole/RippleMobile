@@ -102,8 +102,8 @@ class MultiSigAccount(BaseAccount):
 class Storage:
     def __init__(self, file_path='data.json'):
         self.file_path = file_path
-        self.accounts: Dict[str, Account] = {}  # key: phone_number, value: Account
-        self.multisig_accounts: Dict[str, MultiSigAccount] = {}  # key: id, value: MultiSigAccount
+        self.accounts = {}  # key: phone_number, value: Account
+        self.multisig_accounts = {}  # key: id, value: MultiSigAccount
         self.initialize_data_file()
         self.load_data()
 
