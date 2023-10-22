@@ -1,4 +1,4 @@
-from schemas import USSDResponse, IncomingUSSDRequest, RegistrationRequest, TransactionRequest
+from schemas import USSDResponse, IncomingUSSDRequest, RegistrationRequest, TransactionRequest, SIMMessage
 from ripple import get_account_info, get_transaction_history, register_account, check_balance, send_xrp, encode
 from collections import defaultdict
 from dotenv import get_key
@@ -21,7 +21,7 @@ AMOUNT = r'\$?\d+(?:\.\d{1,2})?'
 sessions = defaultdict(lambda: defaultdict(dict))
 cache = cachetools.TTLCache(maxsize=int(get_key('.env','MAX_CACHE_SIZE')), ttl=float(get_key('.env','CACHE_ITEM_TTL'))) 
 
-def ussd_callback(payload:IncomingUSSDRequest):
+def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
     db = Storage()
     global response
 
@@ -185,10 +185,10 @@ def ussd_callback(payload:IncomingUSSDRequest):
 
         # get multi-sig account approvals
         elif sessions[payload.SESSIONID]['stage']==21 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and payload.USERDATA=='2':
-            response = "Approval List\n"
             wallet = sessions[payload.SESSIONID]['ms-wallet']  
             ms_account = db.get_multisig_account(wallet.id)
             data = ms_account.get_open_txs_for_wallet(account.id)
+            response = f"Approval List({ms_account.account_name})\n"
 
             if not data:
                 response+="no pending approvals"
@@ -197,7 +197,7 @@ def ussd_callback(payload:IncomingUSSDRequest):
                 sessions[payload.SESSIONID]['stage']+=5
                 sessions[payload.SESSIONID]['approvals']=data
                 response += '\n'.join([
-                    f'{idx+1}. {approval.limit_amount.value} {approval.limit_amount.currency} from {approval.account} to {approval.limit_amount.issuer} at fee {approval.fee}' 
+                    f'{idx+1}. {int(approval.amount)/1_000_000} XRP to {db.get_account_by_address(approval.destination).account_name}({approval.destination}) at fee {"{:.8f}".format(int(approval.fee)/1_000_000)} XRP' 
                     for idx, approval in enumerate(data)
                 ])
 
@@ -528,11 +528,16 @@ def ussd_callback(payload:IncomingUSSDRequest):
         response = "Invalid input"
         payload.MSGTYPE = False
 
-    return USSDResponse(
+    res_obj =  USSDResponse(
         USERID = payload.USERID,
         MSISDN = payload.MSISDN,
         USERDATA = payload.USERDATA,
         MSG = response,
         MSGTYPE = payload.MSGTYPE
-    )    
+    )
+
+    if sim:
+        res_obj.SIM_MESSAGE = SIMMessage(MESSAGE="some message", TO="2330303434")
+
+    return res_obj
     
