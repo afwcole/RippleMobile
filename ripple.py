@@ -18,7 +18,7 @@ CLIENT = JsonRpcClient(JSON_RPC_URL)
 def register_account(registration_request: RegistrationRequest, account_type:str):
     try:
         new_wallet = wallet.generate_faucet_wallet(CLIENT)
-        db.add_basic_account(Account(
+        db.add_account(Account(
             account_name=registration_request.name,
             account_type=account_type,
             pin=registration_request.pin,

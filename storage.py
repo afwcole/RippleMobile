@@ -1,4 +1,5 @@
 import json
+import os
 from utils import encode
 from xrpl.wallet import Wallet
 from typing import Dict, List
@@ -103,6 +104,7 @@ class Storage:
         self.file_path = file_path
         self.accounts = {}  # key: phone_number, value: Account
         self.multisig_accounts = {}  # key: id, value: MultiSigAccount
+        self.initialize_data_file()
         self.load_data()
 
     def get_account(self, phone_number: str) -> Account:
@@ -113,8 +115,8 @@ class Storage:
         self.load_data()
         return self.multisig_accounts.get(wallet_addr)
 
-    def add_basic_account(self, basic_account: Account):
-        self.accounts[basic_account.phone_number] = basic_account
+    def add_account(self, account: Account):
+        self.accounts[account.phone_number] = account
         self.save_data()
 
     def add_multisig_account(self, multisig_account: MultiSigAccount):
@@ -126,6 +128,10 @@ class Storage:
             'accounts': {k: v.to_dict() for k, v in self.accounts.items()},
             'multisig_accounts': {k: v.to_dict() for k, v in self.multisig_accounts.items()}
         }
+        print("\n\n\n\n ------------ MODEL ------------\n\n")
+        print(self)
+        # print("\n\n\n\n ------------ DATA ------------\n\n")
+        # print(data)
         with open(self.file_path, 'w') as f:
             json.dump(data, f, indent=4)
 
@@ -139,9 +145,17 @@ class Storage:
             print(e)
             pass  # No data file exists yet
 
+    
+    def initialize_data_file(self):
+        # Check if the file exists, and if not, create it with empty data
+        if not os.path.exists(self.file_path):
+            with open(self.file_path, 'w') as f:
+                json.dump({'accounts': {}, 'multisig_accounts': {}}, f, indent=4)
+    
+
     def __str__(self):
         output = ["Storage:"]
-        output.append("  Basic Accounts:")
+        output.append("Accounts:")
         for phone_number, account in self.accounts.items():
             output.append(f"    {phone_number}: {account.__dict__}")
         output.append("  MultiSig Accounts:")

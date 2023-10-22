@@ -220,7 +220,7 @@ def ussd_callback(payload:IncomingUSSDRequest):
             approval, payload.MSGTYPE = sessions[payload.SESSIONID]['approval'], False
             wallet = sessions[payload.SESSIONID]['ms-wallet']
             response = sign_multisig_tx(
-                wallet_addr=wallet.id, 
+                multisig_wallet_addr=wallet.id, 
                 tx_id=approval.sequence, 
                 msidn=payload.MSISDN, 
                 pin=payload.USERDATA
