@@ -194,11 +194,12 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                 response+="no pending approvals"
             else:
                 print(data[0])
+                # int(acct_info.get('Balance')) / 1_000_000
                 payload.MSGTYPE = True
                 sessions[payload.SESSIONID]['stage']+=5
                 sessions[payload.SESSIONID]['approvals']=data
                 response += '\n'.join([
-                    f'{idx+1}. {approval.limit_amount.value} {approval.limit_amount.currency} from {approval.account} to {approval.limit_amount.issuer} at fee {approval.fee}' 
+                    f'{idx+1}. {int(approval.amount)/1_000_000} XRP from {ms_account.account_name}({approval.account}) to {approval.destination} at fee {int(approval.fee)/1_000_000} XRP' 
                     for idx, approval in enumerate(data)
                 ])
 
