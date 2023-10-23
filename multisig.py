@@ -122,8 +122,8 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
         return "No Multisig account exists with that address"
     if msidn not in multisig_account.signers:
         return "You do not have permission to sign this transaction"
-    
-    signed_tx_list = multisig_account.open_txs.get(tx_id)
+
+    signed_tx_list = multisig_account.open_txs.get(str(tx_id))
 
     # SIGN TXN AND UPDATE MULTISIG ACCOUNT'S OPEN TXS
     base_tx = signed_tx_list[0]
@@ -138,14 +138,14 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
             transaction.submit(multi_tx, CLIENT)
             multisig_account.open_txs.pop(tx_id)
             # NOTIFY SIGNERS THAT A SUCCESFUL TXN HAS OCCURED
-            # for signer_num in multisig_account.signers:
-            #     send_sms(
-            #         f"""Hey! \n{signer_num}, SUCCESFUL transaction sent.
-            #         {multisig_account.min_num_signers} out of {len(multisig_account.signers)}
-            #         have signed the transaction from this Multisign account: {multisig_account.account_name}.
-            #         \n Enjoy transacting with Ripple Mobile securely.""", 
-            #         signer_num
-            #     )
+            for signer_num in multisig_account.signers:
+                send_sms(
+                    f"""Hey! \n{signer_num}, SUCCESFUL transaction sent.
+                    {multisig_account.min_num_signers} out of {len(multisig_account.signers)}
+                    have signed the transaction from this Multisign account: {multisig_account.account_name}.
+                    \n Enjoy transacting with Ripple Mobile securely.""", 
+                    signer_num
+                )
         except Exception as e:
             print(e)
             return "something went wrong while trying to sign the transaction, try again later."
