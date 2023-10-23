@@ -188,7 +188,7 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
         elif sessions[payload.SESSIONID]['stage']==21 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and payload.USERDATA=='2':
             wallet = sessions[payload.SESSIONID]['ms-wallet']  
             ms_account = db.get_multisig_account(wallet.id)
-            data = ms_account.get_open_txs_for_wallet(account.id)
+            data = ms_account.get_open_txs_for_wallet(account.main_wallet.classic_address)
             response = f"Approval List({ms_account.account_name})\n"
 
             if not data:

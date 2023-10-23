@@ -129,21 +129,18 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
     base_tx = signed_tx_list[0]
     signed_tx = transaction.sign(base_tx, user_account.main_wallet, multisign=True)
     signed_tx_list.append(signed_tx)
-    multisig_account.open_txs[tx_id] = signed_tx_list
+    multisig_account.open_txs[str(tx_id)] = signed_tx_list
 
     # SUBMIT AND REMOVE TXN FROM OPEN TXNS IF MIN NUM SIGNERS IS REACHED
     if (multisig_account.min_num_signers <= len(signed_tx_list) - 1):
         try:
             multi_tx = transaction.multisign(base_tx, signed_tx_list[1:])
             transaction.submit(multi_tx, CLIENT)
-            multisig_account.open_txs.pop(tx_id)
+            multisig_account.open_txs.pop(str(tx_id)) # intended to remove multisign
             # NOTIFY SIGNERS THAT A SUCCESFUL TXN HAS OCCURED
             for signer_num in multisig_account.signers:
                 send_sms(
-                    f"""Hey! \n{signer_num}, SUCCESFUL transaction sent.
-                    {multisig_account.min_num_signers} out of {len(multisig_account.signers)}
-                    have signed the transaction from this Multisign account: {multisig_account.account_name}.
-                    \n Enjoy transacting with Ripple Mobile securely.""", 
+                    f"""Hey! \n{signer_num}, SUCCESFUL transaction sent. {multisig_account.min_num_signers} out of {len(multisig_account.signers)} have signed the transaction from this Multisign account: {multisig_account.account_name}.\nEnjoy transacting with Ripple Mobile securely.""", 
                     signer_num
                 )
         except Exception as e:
