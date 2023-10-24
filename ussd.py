@@ -1,5 +1,5 @@
 from schemas import USSDResponse, IncomingUSSDRequest, RegistrationRequest, TransactionRequest, SIMMessage
-from ripple import get_account_info, get_transaction_history, register_account, check_balance, send_xrp, encode
+from ripple import get_account_info, get_transaction_history, register_account, check_balance, send_xrp, encode, get_balance
 from collections import defaultdict
 from dotenv import get_key
 from sms import send_sms
@@ -23,7 +23,7 @@ sessions = defaultdict(lambda: defaultdict(dict))
 cache = cachetools.TTLCache(maxsize=int(get_key('.env','MAX_CACHE_SIZE')), ttl=float(get_key('.env','CACHE_ITEM_TTL'))) 
 
 def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
-    db = Storage()
+    db, sms = Storage(), None
     global response
 
     if re.match(POS_CODE_PATTERN, payload.USERDATA):
@@ -77,10 +77,12 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                 response, payload.MSGTYPE = 'Enter your 4 digit wallet pin', True
                 sessions[payload.SESSIONID]['stage']+=1
 
-        # pin for my approvals
+        # pin for validate and send my approvals
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==8:
             if encode(payload.USERDATA) != account.pin:
                 response, payload.MSGTYPE = "Incorrect PIN.", False
+            elif get_balance(account.phone_number) <= float(sessions[payload.SESSIONID]['amount']):
+                response, payload.MSGTYPE = "You do not have enough funds to perform this transaction.", False
             else:
                 approvals = sessions[payload.SESSIONID]['approvals']
                 data = TransactionRequest(
@@ -90,7 +92,10 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                     pin=payload.USERDATA, 
                 )
                 response = f"You have requested to send {sessions[payload.SESSIONID]['amount']} XRP to {sessions[payload.SESSIONID]['receipent_number']}, we are processing your transaction request, you'll receive an sms when completed"
-                threading.Thread(target=send_xrp, args=(data,)).start()
+                if not sim:
+                    threading.Thread(target=send_xrp, args=(data,)).start()
+                else:
+                    _, sms = send_xrp(data, sim)
             payload.MSGTYPE = False
 
             # get chache key
@@ -182,7 +187,8 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                 response = 'Shared Account(MultiSign) Info\n'
                 response += f'name: {wallet.account_name}\n'
                 response += f'type: {wallet.account_type}\n'
-                response += f'balance: {mcb(wallet.id, payload.MSISDN, account.pin)}'
+                _, sms = mcb(wallet.id, payload.MSISDN, account.pin, sim)
+                response += f'balance: {_}'
 
         # get multi-sig account approvals
         elif sessions[payload.SESSIONID]['stage']==21 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and payload.USERDATA=='2':
@@ -220,14 +226,13 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
         elif sessions[payload.SESSIONID]['stage']==27 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and re.match(PIN_PATTERN, payload.USERDATA):
             approval, payload.MSGTYPE = sessions[payload.SESSIONID]['approval'], False
             wallet = sessions[payload.SESSIONID]['ms-wallet']
-            response = sign_multisig_tx(
+            response, sms = sign_multisig_tx(
                 multisig_wallet_addr=wallet.id, 
                 tx_id=approval.sequence, 
                 msidn=payload.MSISDN, 
-                pin=payload.USERDATA
+                pin=payload.USERDATA,
+                sim=sim
             )
-            # response, payload.MSGTYPE = "You have requested to sign this transaction, you will be notified when complete", False
-            # ask for pin to validate approval
 
         #multi-sig account request payment receipient number
         elif sessions[payload.SESSIONID]['stage']==21 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and payload.USERDATA=='3':
@@ -260,8 +265,12 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                     amount_xrp=sessions[payload.SESSIONID]['amount'] ,
                     pin=payload.USERDATA
                 )
-                threading.Thread(target=request_multisig_tx, args=(wallet.id, transaction_request)).start()
                 response = "We are creating your payment request"
+                if not sim:   
+                    threading.Thread(target=request_multisig_tx, args=(wallet.id, transaction_request)).start()
+                else:
+                    _, sim = request_multisig_tx(wallet.id, transaction_request, sim)
+                
 
         # set account name in session for multi-sig
         elif sessions[payload.SESSIONID]['stage']==10 and sessions[payload.SESSIONID]['prev_choice']=="5" and payload.USERDATA=='2':
@@ -334,19 +343,28 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
         #  create multisign account
         elif sessions[payload.SESSIONID]['stage']==15 and sessions[payload.SESSIONID]['prev_choice']=="5" and re.match(PIN_PATTERN, payload.USERDATA):
             sesh = sessions[payload.SESSIONID]['multi-sig']
-            threading.Thread(target=register_multisig_account, kwargs={
-                'account_name':sesh['account_name'],
-                'min_num_signers':sesh['min_signers'],
-                'signer_phone_nums':list(sesh['signers']),
-                'msidn':payload.MSISDN,
-                'pin':payload.USERDATA,
-            }).start()
-
-            response = f"We are creating your shared(multi-sig) account - {sesh['account_name']}. you and other signers will be notified via SMS when complete."
+            if not sim:
+                response = f"We are creating your shared(multi-sig) account - {sesh['min_signers']}. you and other signers will be notified via SMS when complete."
+                threading.Thread(target=register_multisig_account, kwargs={
+                    'account_name':sesh['account_name'],
+                    'min_num_signers':sesh['min_signers'],
+                    'signer_phone_nums':list(sesh['signers']),
+                    'msidn':payload.MSISDN,
+                    'pin':payload.USERDATA,
+                }).start()
+            else:
+                response, sms = register_multisig_account(
+                    account_name=sesh['account_name'],
+                    min_num_signers=sesh['min_signers'],
+                    signer_phone_nums=list(sesh['signers']),
+                    msidn=payload.MSISDN,
+                    pin = payload.USERDATA,
+                    sim = sim
+                )
             payload.MSGTYPE=False
             del sessions[payload.SESSIONID]
         
-        # validate pin for My Approvals
+        # validate pin to see My Approvals
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1 and sessions[payload.SESSIONID]['prev_choice']=="0":
 
             if encode(payload.USERDATA) != account.pin:
@@ -370,11 +388,15 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==1:
             prev_choice = sessions[payload.SESSIONID]['prev_choice']
             if prev_choice == "1":
-                response = check_balance(payload.MSISDN, payload.USERDATA)
+                response, sms = check_balance(payload.MSISDN, payload.USERDATA, sim)
             elif prev_choice == "3":
                 response = get_account_info(payload.MSISDN, payload.USERDATA)
             elif prev_choice == "4":
-                threading.Thread(target=get_transaction_history, args=(payload.MSISDN, payload.USERDATA)).start()
+                response =f"Transaction history has been sent via SMS"
+                if not sim:
+                    threading.Thread(target=get_transaction_history, args=(payload.MSISDN, payload.USERDATA)).start()
+                else:
+                    response, sms = get_transaction_history(payload.MSISDN, payload.USERDATA, sim)
                 response = "We're preparing your history, we'll send an sms once it's ready"
             payload.MSGTYPE = False
             del sessions[payload.SESSIONID]
@@ -414,7 +436,7 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
 
         # validate pin for POS request Payment
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==3 and sessions[payload.SESSIONID]['prev_choice']=='6':
-            payee = db.get_account(sessions[payload.SESSIONID]['receipent_number'])
+            payee, sms = db.get_account(sessions[payload.SESSIONID]['receipent_number']), None
 
             if not payee:
                 response = "payee account not found"
@@ -429,8 +451,15 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
 
             message = f'Payment request from Merchant with phone {payload.MSISDN} to pay {sessions[payload.SESSIONID]["amount"]} XRP\n'
             message += f'Dial *920*106*{code}# to approve payment of {sessions[payload.SESSIONID]["amount"]} to Merchant {payload.MSISDN}\n'
+            message += f'or Select \'0. My Approvals\' for menu to approve transacttion\n'
             message += 'Ignore if you are not aware of this transaction.'
-            threading.Thread(target=send_sms, args=(message, sessions[payload.SESSIONID]['receipent_number'])).start()
+            if not sim:
+                threading.Thread(target=send_sms, args=(message, sessions[payload.SESSIONID]['receipent_number'])).start()
+            else:
+                sms = [SIMMessage(
+                    TO=sessions[payload.SESSIONID]['receipent_number'],
+                    MESSAGE=message
+                )]
             response = "payment request initiated"
 
         # validate pin and send amount
@@ -452,8 +481,11 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                     amount_xrp=sessions[payload.SESSIONID]['amount'], 
                     pin=payload.USERDATA, 
                 )
-                response = f"You have requested to send {sessions[payload.SESSIONID]['amount']} XRP to {sessions[payload.SESSIONID]['receipent_number']}, we are processing your transaction request, you'll receive an sms when completed"
-                threading.Thread(target=send_xrp, args=(data,)).start()
+                if not sim:
+                    response = f"You have requested to send {data.amount_xrp} XRP to {data.recipient_phone_num}, we are processing your transaction request, you'll receive an sms when completed"
+                    threading.Thread(target=send_xrp, args=(data,)).start()
+                else:
+                    response, sms = send_xrp(data, sim)
             payload.MSGTYPE = False
             del sessions[payload.SESSIONID]
 
@@ -482,7 +514,10 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                     pin=payload.USERDATA, 
                 )
                 response = f"You have approved payment request to send {session['amount']} XRP to {requester['phone_num']}, we are processing your transaction request, you'll receive an sms when completed"
-                threading.Thread(target=send_xrp, args=(data,)).start()
+                if not sim:
+                    threading.Thread(target=send_xrp, args=(data,)).start()
+                else:
+                    _, sms = send_xrp(data, sim)
 
             payload.MSGTYPE = False
             if key in session:
@@ -516,7 +551,10 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                 name=payload.MSISDN,
                 pin=payload.USERDATA
             )
-            threading.Thread(target=register_account, args=(data, account_type)).start()
+            if not sim:
+                threading.Thread(target=register_account, args=(data, account_type)).start()
+            else:
+                _, sms = register_account(data, account_type, sim)
         payload.MSGTYPE = False
 
     # exit
@@ -537,8 +575,8 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
         MSGTYPE = payload.MSGTYPE
     )
 
-    if sim:
-        res_obj.SIM_MESSAGE = SIMMessage(MESSAGE="some message", TO=payload.MSISDN)
+    if sim and sms:
+        res_obj.SIM_MESSAGE = sms
 
     return res_obj
     

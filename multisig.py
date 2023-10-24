@@ -4,7 +4,7 @@ from xrpl.clients import JsonRpcClient
 from xrpl.models.transactions import SignerEntry, SignerListSet, TrustSet, Payment
 from xrpl.models.amounts import IssuedCurrencyAmount
 from xrpl.models.requests import AccountInfo
-from schemas import TransactionRequest
+from schemas import TransactionRequest, SIMMessage
 from sms import send_sms
 from storage import Account, MultiSigAccount, Storage
 from utils import encode
@@ -14,9 +14,10 @@ db = Storage()
 JSON_RPC_URL = "https://s.altnet.rippletest.net:51234/" #os.environ.get('JSON_RPC_URL')
 CLIENT = JsonRpcClient(JSON_RPC_URL)
 
-def register_multisig_account(account_name: str, min_num_signers: int, signer_phone_nums: list, msidn: str, pin: str):
+def register_multisig_account(account_name: str, min_num_signers: int, signer_phone_nums: list, msidn: str, pin: str, sim:bool=False):
     # VERIFY USER EXITS
     user_account = db.get_account(msidn)
+    response, sms = "", None
     if not user_account:
         return "User not found."
     if user_account.pin != encode(pin):
@@ -58,27 +59,43 @@ def register_multisig_account(account_name: str, min_num_signers: int, signer_ph
         db.add_multisig_account(new_multisig_account)
 
         #UPDATE ALL SIGNER ACCOUNT'S INFO IN DB AND SEND OUT CORRESPONDING SMS
+        sms = []
         for signer_phone_num in signer_phone_nums:
             signer_account = db.get_account(signer_phone_num)
             signer_account.other_wallets.append(new_multisig_account.id)
             db.add_account(signer_account)
-            send_sms(
-                f"Hey! \n{msidn} created a new Multisign account, and has made you 1 of {len(signer_phone_nums)} approvers for this account. A minimum of {min_num_signers} approvals are required for any transaction from this account. \
-                \n Enjoy transacting with Ripple Mobile securely.", 
-                signer_phone_num
-            )
-        return f"Succesfully created new Multisig account - {account_name}. SMS messages have been sent out to all signers."
+            if msidn != signer_account.phone_number:
+                message = f"Hey! \n{msidn} created a new Multisign account, and has made you 1 of {len(signer_phone_nums)} approvers for this account. A minimum of {min_num_signers} approvals are required for any transaction from this account. \
+                        \n Enjoy transacting with Ripple Mobile securely."
+            else:
+                message = f"Hey! your request to create a multisign was successful."
+            if not sim:
+                send_sms(message, signer_phone_num)
+            else:
+                sms.append(
+                    SIMMessage(
+                        TO=signer_phone_num,
+                        MESSAGE=message
+                    )
+                )
+
+        response = f"We are creating your shared(multi-sig) account - {account_name}. you and other signers will be notified via SMS when complete."
     except Exception as e:
-        send_sms(f"""Hey! \nSomething went wrong while creating your multi sign account, try again later""", msidn)
+        response = f"""Hey! \nSomething went wrong while creating your multi sign account, try again later"""
+        send_sms(response, msidn)
         print(e)
 
-def request_multisig_tx(multisig_wallet_addr: str, transaction_request: TransactionRequest):
+    return response, sms
+
+def request_multisig_tx(multisig_wallet_addr: str, transaction_request: TransactionRequest, sim=False):
     # VERIFY USER EXITS
-    user_account = db.get_account(transaction_request.sender_phone_num)
+    user_account, sms = db.get_account(transaction_request.sender_phone_num), None
+    
     if not user_account:
-        return "User not found."
+        return "User not found.", sms
+    
     if user_account.pin != transaction_request.pin:
-        return "Incorrect PIN."
+        return "Incorrect PIN.", sms
     
     # CREATE MULTISIG TRANSACTION
     recipient_account = db.get_account(transaction_request.recipient_phone_num)
@@ -98,19 +115,30 @@ def request_multisig_tx(multisig_wallet_addr: str, transaction_request: Transact
     db.add_multisig_account(multisig_account)
 
     try:
+        sms = []
+        message = f"Hey {signer_phone}! \n{transaction_request.sender_phone_num} created a new Multisign transaction, transaction id - {txn.sequence}. This transaction requires approval from atleast {multisig_account.min_num_signers} approvers. Kindly go to approvals menu to approve this transaction."
         # NOTIFY ALL SIGNERS OF NEW TXNS REQUIRING SIGNING
         for signer_phone in multisig_account.signers:
-            send_sms(
-                f"Hey {signer_phone}! \n{transaction_request.sender_phone_num} created a new Multisign transaction, transaction id - {txn.sequence}. This transaction requires approval from atleast {multisig_account.min_num_signers} approvers. Kindly go to approvals menu to approve this transaction.", 
-                signer_phone
-            )
+            if not sim:
+                send_sms(message, signer_phone)
+            else:
+                sms.append(
+                    SIMMessage(
+                        TO=signer_phone,
+                        MESSAGE=message
+                    )
+                )
+        response = f"Successfully created transaction with id - {txn.sequence}"
+         
     except Exception as e:
         print(e)
-    return f"Successfully created transaction with id - {txn.sequence}"
 
-def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str):
+    return response, sms
+
+def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str, sim=False):
     # VERIFY USER EXITS
-    user_account = db.get_account(msidn)
+    user_account, sms = db.get_account(msidn)
+
     if not user_account:
         return "User not found."
     if user_account.pin != encode(pin):
@@ -134,23 +162,27 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
     # SUBMIT AND REMOVE TXN FROM OPEN TXNS IF MIN NUM SIGNERS IS REACHED
     if (multisig_account.min_num_signers <= len(signed_tx_list) - 1):
         try:
+            sms = []
             multi_tx = transaction.multisign(base_tx, signed_tx_list[1:])
             transaction.submit(multi_tx, CLIENT)
             multisig_account.open_txs.pop(str(tx_id)) # intended to remove multisign
             # NOTIFY SIGNERS THAT A SUCCESFUL TXN HAS OCCURED
+            message = f"""Hey! \n{signer_num}, SUCCESFUL transaction sent. {multisig_account.min_num_signers} out of {len(multisig_account.signers)} have signed the transaction from this Multisign account: {multisig_account.account_name}.\nEnjoy transacting with Ripple Mobile securely."""
             for signer_num in multisig_account.signers:
-                send_sms(
-                    f"""Hey! \n{signer_num}, SUCCESFUL transaction sent. {multisig_account.min_num_signers} out of {len(multisig_account.signers)} have signed the transaction from this Multisign account: {multisig_account.account_name}.\nEnjoy transacting with Ripple Mobile securely.""", 
-                    signer_num
-                )
+                if not sim:
+                    send_sms(message, signer_num)
+                else:
+                    sms.append(SIMMessage(TO=signer_num, MESSAGE=message))
+            respone = "successfully signed transaction"
         except Exception as e:
             print(e)
-            return "something went wrong while trying to sign the transaction, try again later."
+            respone = "something went wrong while trying to sign the transaction, try again later."
+    
     db.add_multisig_account(multisig_account)
-    return "successfully signed transaction"
+    return respone, sms
 
-def check_balance(wallet: str, phone_num:str, encoded_pin: str):
-    user_account = db.get_account(phone_num)
+def check_balance(wallet: str, phone_num:str, encoded_pin: str, sim=False):
+    user_account, sms = db.get_account(phone_num), None
     if not user_account:
         return "User not found."
     
@@ -160,8 +192,17 @@ def check_balance(wallet: str, phone_num:str, encoded_pin: str):
     try:
         acct_info = AccountInfo(account=wallet, ledger_index="validated")
         response = CLIENT.request(acct_info)
-        send_sms(f"Current balance is {int(response.result['account_data']['Balance']) / 1_000_000} XRP", phone_num)
-        return f"{int(response.result['account_data']['Balance']) / 1_000_000} XRP"
+        message = f"Current balance is {int(response.result['account_data']['Balance']) / 1_000_000} XRP"
+        if not sim:
+            send_sms(message, phone_num)
+        else:
+            sms = [SIMMessage(
+                TO=phone_num,
+                MESSAGE=message
+            )]
+        response = f"{int(response.result['account_data']['Balance']) / 1_000_000} XRP"
     except Exception as e:
         print(e)
-        return "Something went wrong, try again later"
+        response = "Something went wrong, try again later"
+    
+    return response, sms
