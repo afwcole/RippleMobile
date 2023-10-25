@@ -165,7 +165,7 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
             sms = []
             multi_tx = transaction.multisign(base_tx, signed_tx_list[1:])
             transaction.submit(multi_tx, CLIENT)
-            multisig_account.open_txs.pop(str(tx_id)) # intended to remove multisign
+            multisig_account.open_txs.pop(str(tx_id))
             # NOTIFY SIGNERS THAT A SUCCESFUL TXN HAS OCCURED
             message = f"""Hey! \n{signer_num}, SUCCESFUL transaction sent. {multisig_account.min_num_signers} out of {len(multisig_account.signers)} have signed the transaction from this Multisign account: {multisig_account.account_name}.\nEnjoy transacting with Ripple Mobile securely."""
             for signer_num in multisig_account.signers:
