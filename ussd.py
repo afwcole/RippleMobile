@@ -3,7 +3,7 @@ from ripple import get_account_info, get_transaction_history, register_account, 
 from collections import defaultdict
 from dotenv import get_key
 from sms import send_sms
-import re, threading, cachetools, random
+import re, threading, cachetools, random, os
 from storage import Storage
 from multisig import (
     register_multisig_account,
@@ -20,7 +20,7 @@ PHONE_PATTERN = r'^\d{10,12}$'
 NUMBER_OPTION_PATTERN=r'\b\d{1,2}\b'
 AMOUNT = r'\$?\d+(?:\.\d{1,2})?'
 sessions = defaultdict(lambda: defaultdict(dict))
-cache = cachetools.TTLCache(maxsize=int(get_key('.env','MAX_CACHE_SIZE')), ttl=float(get_key('.env','CACHE_ITEM_TTL'))) 
+cache = cachetools.TTLCache(maxsize=int(os.environ.get('MAX_CACHE_SIZE')), ttl=float(os.environ.get('CACHE_ITEM_TTL')))
 
 def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
     db, sms = Storage(), None
