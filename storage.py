@@ -140,10 +140,7 @@ class Storage:
             'accounts': {k: v.to_dict() for k, v in self.accounts.items()},
             'multisig_accounts': {k: v.to_dict() for k, v in self.multisig_accounts.items()}
         }
-        print("\n\n\n\n ------------ MODEL ------------\n\n")
-        print(self)
-        # print("\n\n\n\n ------------ DATA ------------\n\n")
-        # print(data)
+
         with open(self.file_path, 'w') as f:
             json.dump(data, f, indent=4)
 
