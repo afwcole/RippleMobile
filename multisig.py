@@ -19,20 +19,20 @@ def register_multisig_account(account_name: str, min_num_signers: int, signer_ph
     user_account = db.get_account(msidn)
     response, sms = "", None
     if not user_account:
-        return "User not found."
+        return "User not found.", sms
     if user_account.pin != encode(pin):
-        return "Incorrect PIN."
+        return "Incorrect PIN.", sms
     
     # GET ALL SIGNER PHONE NUMBERS FROM STRING (MUST BE LESS THAN 8 SIGNERS)
     if len(signer_phone_nums) > 8:
-        return "Too many signers, Multisign accounts can have a max of 8 signers"
+        return "Too many signers, Multisign accounts can have a max of 8 signers", sms
     
     # GET EACH SIGNER'S ACCOUNT AND MAP INTO A LIST OF SIGNER ENTRIES
     signer_entries = []
     for signer_phone_num in signer_phone_nums:
         account_info = db.get_account(signer_phone_num)
         if (not account_info):
-            return f"No account with this phone number: {signer_phone_num}"
+            return f"No account with this phone number: {signer_phone_num}", sms
     
         wallet_address = account_info.main_wallet.classic_address
         signer_entry = SignerEntry(account=wallet_address, signer_weight=1)
@@ -109,16 +109,16 @@ def request_multisig_tx(multisig_wallet_addr: str, transaction_request: Transact
     # GET MULTISIG ACCOUNT AND SAVE TXN TO ACCOUNT'S OPEN TXNS IN DB
     multisig_account = db.get_multisig_account(multisig_wallet_addr)
     if(not multisig_account):
-        return "No Multisig account exists with that address"
+        return "No Multisig account exists with that address", sms
     txn = transaction.autofill(txn, CLIENT, multisig_account.min_num_signers)
     multisig_account.open_txs[str(txn.sequence)] = [txn]
     db.add_multisig_account(multisig_account)
 
     try:
         sms = []
-        message = f"Hey {signer_phone}! \n{transaction_request.sender_phone_num} created a new Multisign transaction, transaction id - {txn.sequence}. This transaction requires approval from atleast {multisig_account.min_num_signers} approvers. Kindly go to approvals menu to approve this transaction."
         # NOTIFY ALL SIGNERS OF NEW TXNS REQUIRING SIGNING
         for signer_phone in multisig_account.signers:
+            message = f"Hey {signer_phone}! \n{transaction_request.sender_phone_num} created a new Multisign transaction, transaction id - {txn.sequence}. This transaction requires approval from atleast {multisig_account.min_num_signers} approvers. Kindly go to approvals menu in MultiSign Acc/Shared accounts to approve this transaction."
             if not sim:
                 send_sms(message, signer_phone)
             else:
@@ -131,6 +131,7 @@ def request_multisig_tx(multisig_wallet_addr: str, transaction_request: Transact
         response = f"Successfully created transaction with id - {txn.sequence}"
          
     except Exception as e:
+        response = "Something went wrong, try again later"
         print(e)
 
     return response, sms
@@ -140,16 +141,16 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
     user_account, sms = db.get_account(msidn)
 
     if not user_account:
-        return "User not found."
+        return "User not found.", sms
     if user_account.pin != encode(pin):
-        return "Incorrect PIN."
+        return "Incorrect PIN.", sms
     
     # GET MULTISG ACCOUNT AND BASE TX
     multisig_account = db.get_multisig_account(multisig_wallet_addr)
     if(not multisig_account):
-        return "No Multisig account exists with that address"
+        return "No Multisig account exists with that address", sms
     if msidn not in multisig_account.signers:
-        return "You do not have permission to sign this transaction"
+        return "You do not have permission to sign this transaction", sms
 
     signed_tx_list = multisig_account.open_txs.get(str(tx_id))
 
@@ -184,15 +185,19 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
 def check_balance(wallet: str, phone_num:str, encoded_pin: str, sim=False):
     user_account, sms = db.get_account(phone_num), None
     if not user_account:
-        return "User not found."
+        return "User not found.", sms
     
     if user_account.pin != encoded_pin:
-        return "Incorrect PIN."
+        return "Incorrect PIN.", sms
     
     try:
         acct_info = AccountInfo(account=wallet, ledger_index="validated")
+        account = db.get_multisig_account(acct_info.account)
+        if not account:
+            raise ValueError
+        account_name = account.account_name
         response = CLIENT.request(acct_info)
-        message = f"Current balance is {int(response.result['account_data']['Balance']) / 1_000_000} XRP"
+        message = f"Current balance for multisign account - {account_name} is {int(response.result['account_data']['Balance']) / 1_000_000} XRP"
         if not sim:
             send_sms(message, phone_num)
         else:

@@ -1,11 +1,12 @@
 from pydantic import BaseModel, validator
 from utils import encode
+from typing import List
 import re
 
 def validate_pin_and_encode(cls, v: str) -> str:
     if not re.match(r'^\d{4}$', v):
         raise ValueError('pin must be contain 4 digits')            
-    return validate_encoded_string(v)
+    return encode(v)
 
 class RegistrationRequest(BaseModel):
     phone_num: str
@@ -40,7 +41,7 @@ class USSDResponse(BaseModel):
     USERDATA: str
     MSG: str
     MSGTYPE: bool
-    SIM_MESSAGE: SIMMessage = None
+    SIM_MESSAGE: List[SIMMessage] = None
 
 class NaloSMSRequest(BaseModel):
     key: str
