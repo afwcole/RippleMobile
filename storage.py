@@ -36,7 +36,7 @@ class BaseAccount:
         return self.id == other.id and self.account_name == other.account_name
 
 class Account(BaseAccount):
-    def __init__(self, account_name: str, account_type: str, pin: str, main_wallet: Wallet, phone_number: str, other_wallets: list[str] = []):
+    def __init__(self, account_name: str, account_type: str, pin: str, main_wallet: Wallet, phone_number: str, other_wallets: List[str] = []):
         super().__init__(phone_number, account_name, account_type, main_wallet)
         self.phone_number = phone_number
         self.other_wallets = other_wallets
@@ -64,7 +64,7 @@ class Account(BaseAccount):
         )
 
 class MultiSigAccount(BaseAccount):
-    def __init__(self, account_name: str, account_type: str, main_wallet: Wallet, signers: list[str], min_num_signers: int, open_txs: Dict[str, List[Transaction]] = {}):
+    def __init__(self, account_name: str, account_type: str, main_wallet: Wallet, signers: List[str], min_num_signers: int, open_txs: Dict[str, List[Transaction]] = {}):
         super().__init__(main_wallet.classic_address, account_name, account_type, main_wallet)
         self.signers = signers 
         self.min_num_signers = min_num_signers
