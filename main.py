@@ -26,7 +26,7 @@ app.add_middleware(
 def ussd_request(payload:IncomingUSSDRequest, sim: Annotated[bool | None, Header()] = False):
     return ussd_callback(payload, sim)
 
-@app.post("/refresh/")
+@app.post("/refresh/", deprecated=True)
 def refresh_data(auth_admin_x: Annotated[str | None, Header()] = None):
     if auth_admin_x != os.environ.get('AUTH_ADMIN_X'):
         return "You are not qualified to perform this operation"
