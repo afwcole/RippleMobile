@@ -251,7 +251,6 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
             
         # multi-sig account request payment amount
         elif sessions[payload.SESSIONID]['stage']==23 and sessions[payload.SESSIONID]['prev_choice']=="5.1" and re.match(AMOUNT, payload.USERDATA):
-            # validate account amount -> wallet = sessions[payload.SESSIONID]['ms-wallet']
             sessions[payload.SESSIONID]['amount'] = payload.USERDATA
             response, payload.MSGTYPE = "Enter your 4 digit pin", True
             sessions[payload.SESSIONID]['stage']+=1
@@ -470,7 +469,6 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
 
         # validate pin and send amount
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==3:
-            
             sender = db.get_account(payload.MSISDN)
             recipient = db.get_account(sessions[payload.SESSIONID]['receipent_number'])
 
@@ -479,6 +477,9 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
 
             elif not recipient:
                 response = "recipient account not found"
+
+            elif get_balance(account.phone_number) <= float(sessions[payload.SESSIONID]['amount']):
+                response = "Your balance is not enough to perform this transaction."
 
             else:
                 data = TransactionRequest(
@@ -499,6 +500,13 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
         elif re.match(PIN_PATTERN, payload.USERDATA) and sessions[payload.SESSIONID]['stage']==0 and sessions[payload.SESSIONID]['pr_session_key']:
             key = sessions[payload.SESSIONID]['pr_session_key']
             session = cache.get(key)
+
+            print('here')
+
+            # elif get_balance(account.phone_number) <= float(sessions[payload.SESSIONID]['amount']):
+            #     response = "Your balance is not enough to perform this transaction."
+
+            # validate-amount
 
             if not session:
                 response = "Payment request session expired"
