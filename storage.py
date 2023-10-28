@@ -155,11 +155,12 @@ class Storage:
             pass  # No data file exists yet
 
     
-    def initialize_data_file(self):
+    def initialize_data_file(self, force:bool = False):
         # Check if the file exists, and if not, create it with empty data
-        if not os.path.exists(self.file_path):
+        if not os.path.exists(self.file_path) or force:
             with open(self.file_path, 'w') as f:
                 json.dump({'accounts': {}, 'multisig_accounts': {}}, f, indent=4)
+        self.load_data()
     
 
     def __str__(self):

@@ -16,7 +16,6 @@ response = ''
 PIN_PATTERN = r'^\d{4}$'
 POS_CODE_PATTERN = r'\*920\*106\*\d{3}$'
 PHONE_PATTERN = r'^\d{10,12}$'
-# r'^(233|0)\d{9}$'
 NUMBER_OPTION_PATTERN=r'\b\d{1,2}\b'
 AMOUNT = r'\$?\d+(?:\.\d{1,2})?'
 sessions = defaultdict(lambda: defaultdict(dict))
