@@ -160,10 +160,6 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
     signed_tx_list.append(signed_tx)
     multisig_account.open_txs[str(tx_id)] = signed_tx_list
     base_tx_dict = base_tx.to_dict()
-
-    print()
-
-    # rswHop32YrfnRudHvSckRwT6wZVvJheZRG
     
     response = "successfully signed transaction"
     # SUBMIT AND REMOVE TXN FROM OPEN TXNS IF MIN NUM SIGNERS IS REACHED
@@ -184,7 +180,7 @@ def sign_multisig_tx(multisig_wallet_addr: str, tx_id: str, msidn: str, pin: str
                 
             if recipient:
                 message = f"You have received {amount} XRP from MultiSign Account - {multisig_account.account_name}."
-                if not sim:send_sms(message, recipient)
+                if not sim:send_sms(message, recipient.phone_number)
                 else:sms.append(SIMMessage(TO=recipient.phone_number, MESSAGE=message))
         except Exception as e:
             print(e)
