@@ -526,7 +526,7 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
                     amount_xrp=session['amount'], 
                     pin=payload.USERDATA, 
                 )
-                response = f"You have approved payment request to send {session['amount']} XRP to {requester['phone_num']}, we are processing your transaction request, you'll receive an sms when completed"
+                response = f"You have approved payment request to send {session['amount']} XRP to {requester.phone_number}, we are processing your transaction request, you'll receive an sms when completed"
                 if not sim:
                     threading.Thread(target=send_xrp, args=(data,)).start()
                 else:
