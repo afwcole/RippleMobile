@@ -521,8 +521,8 @@ def ussd_callback(payload:IncomingUSSDRequest, sim:bool=False):
 
             else:
                 data = TransactionRequest(
-                    sender_phone_num=payee['phone_num'], 
-                    recipient_phone_num=requester['phone_num'], 
+                    sender_phone_num=payee.phone_number, 
+                    recipient_phone_num=requester.phone_number, 
                     amount_xrp=session['amount'], 
                     pin=payload.USERDATA, 
                 )
